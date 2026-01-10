@@ -16,14 +16,41 @@ config({ path: ".env.local" });
 
 import { createClient } from "@supabase/supabase-js";
 import * as shapefile from "shapefile";
-import { createWriteStream, mkdirSync, existsSync, rmSync } from "fs";
+import { createWriteStream, mkdirSync, existsSync, rmSync, readFileSync } from "fs";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
+import proj4 from "proj4";
 
 const execAsync = promisify(exec);
+
+// Vermont State Plane (EPSG:32145) - NAD83 / Vermont
+// This is the coordinate system used by VCGI shapefiles
+proj4.defs(
+  "EPSG:32145",
+  "+proj=tmerc +lat_0=42.5 +lon_0=-72.5 +k=0.999964286 +x_0=500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
+);
+
+// Function to reproject coordinates from Vermont State Plane to WGS84
+function reprojectCoords(coords: number[]): number[] {
+  return proj4("EPSG:32145", "EPSG:4326", coords);
+}
+
+// Recursively reproject all coordinates in a geometry
+function reprojectGeometry(
+  coordinates: GeoJSON.Position[] | GeoJSON.Position[][] | GeoJSON.Position[][][]
+): GeoJSON.Position[] | GeoJSON.Position[][] | GeoJSON.Position[][][] {
+  if (typeof coordinates[0] === "number") {
+    // This is a single coordinate [x, y]
+    return reprojectCoords(coordinates as number[]);
+  }
+  // Recursively process nested arrays
+  return (coordinates as unknown[]).map((coord) =>
+    reprojectGeometry(coord as GeoJSON.Position[] | GeoJSON.Position[][])
+  ) as GeoJSON.Position[] | GeoJSON.Position[][] | GeoJSON.Position[][][];
+}
 
 const SHAPEFILE_URL =
   "https://maps.vcgi.vermont.gov/gisdata/vcgi/packaged_zips/CadastralParcels_VTPARCELS/VTPARCELS_Richmond.zip";
@@ -165,6 +192,8 @@ async function main() {
 
   console.log(`   Merged into ${parcelMap.size} unique parcels\n`);
 
+  console.log("🌐 Reprojecting from Vermont State Plane (EPSG:32145) to WGS84...\n");
+
   // Clear existing parcels
   console.log("🗑️  Clearing existing parcels...");
   const { error: deleteError } = await supabase
@@ -201,10 +230,14 @@ async function main() {
         // Get address
         const address = props.E911ADDR || null;
 
-        // Create MultiPolygon from merged coordinates
+        // Create MultiPolygon from merged coordinates, reprojecting to WGS84
+        const reprojectedCoords = reprojectGeometry(
+          data.coordinates
+        ) as GeoJSON.Position[][][];
+
         const geometry: GeoJSON.MultiPolygon = {
           type: "MultiPolygon",
-          coordinates: data.coordinates,
+          coordinates: reprojectedCoords,
         };
 
         return {

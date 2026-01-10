@@ -27,7 +27,7 @@ A Next.js web app for the Richmond Fire District to manage their water system. F
 | `contacts` | Contact directory (name, address, phone, email, contact_type) |
 | `meters` | Reference table for water meters |
 | `reservoirs` | Reference table for reservoirs |
-| `parcels` | GeoJSON parcel boundaries for map overlay |
+| `parcels` | Parcel boundaries with PostGIS geometry for spatial queries (parcel_id, owner_name, address, geometry) |
 
 ### User Roles
 
@@ -142,6 +142,74 @@ lib/
 3. Create contact form for add/edit
 4. Add delete confirmation dialog
 
+### Phase 7: Parcel Data Import & Spatial Queries
+
+**Data Source:**
+- Vermont GIS Parcel Data: https://maps.vcgi.vermont.gov/gisdata/vcgi/packaged_zips/CadastralParcels_VTPARCELS/VTPARCELS_Richmond.zip
+
+**Database Setup:**
+1. Enable PostGIS extension in Supabase
+2. Update `parcels` table schema to use PostGIS geometry type
+3. Create spatial index on geometry column for fast viewport queries
+
+**Schema:**
+```sql
+-- Enable PostGIS
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- Parcels table with geometry
+CREATE TABLE parcels (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parcel_id TEXT NOT NULL,
+  owner_name TEXT,
+  address TEXT,
+  geometry GEOMETRY(MultiPolygon, 4326) NOT NULL,
+  properties JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Spatial index for viewport queries
+CREATE INDEX parcels_geometry_idx ON parcels USING GIST (geometry);
+
+-- Index for parcel_id lookups
+CREATE INDEX parcels_parcel_id_idx ON parcels (parcel_id);
+```
+
+**Import Pipeline:**
+1. Create import script (`scripts/import-parcels.ts`)
+2. Download shapefile from VCGI
+3. Convert shapefile to GeoJSON using `ogr2ogr` or `shpjs`
+4. Parse and insert into Supabase with geometry
+
+**Viewport Query API:**
+1. Create server action for spatial queries (`lib/actions/parcels.ts`)
+2. Accept bounding box (minLng, minLat, maxLng, maxLat)
+3. Return parcels intersecting viewport using `ST_Intersects`
+4. Update map to fetch parcels on viewport change
+
+**Implementation Steps:**
+1. Enable PostGIS extension in Supabase dashboard
+2. Run schema migration for parcels table with geometry
+3. Create parcel import script
+4. Download and import Richmond parcel data
+5. Create viewport-based query endpoint
+6. Update map component to fetch parcels dynamically
+7. Add admin UI for re-importing/updating parcel data
+
+**Query Example:**
+```sql
+SELECT
+  id, parcel_id, owner_name, address,
+  ST_AsGeoJSON(geometry) as geometry
+FROM parcels
+WHERE ST_Intersects(
+  geometry,
+  ST_MakeEnvelope($minLng, $minLat, $maxLng, $maxLat, 4326)
+)
+LIMIT 500;
+```
+
 ---
 
 ## Key Files to Create/Modify
@@ -155,6 +223,8 @@ lib/
 | `app/(dashboard)/layout.tsx` | Dashboard shell with navigation |
 | `components/readings/water-production-form.tsx` | Primary mobile data entry pattern |
 | `components/map/map-container.tsx` | MapboxGL initialization |
+| `scripts/import-parcels.ts` | Parcel data import script (shapefile → Supabase) |
+| `lib/actions/parcels.ts` | Viewport-based parcel queries with PostGIS |
 | `.env.local` | Environment variables (Supabase URL/key, Mapbox token) |
 
 ---
@@ -180,12 +250,17 @@ NEXT_PUBLIC_MAPBOX_TOKEN=your-mapbox-token
 ### Mapbox (ready)
 - You have a token ready to use
 
-### GIS Data (needs to be acquired)
-Parcel and infrastructure data sources to consider:
-- County GIS department / assessor's office for parcel data
-- Existing CAD drawings or maps of the water system
+### GIS Data
+**Parcel Data:**
+- Source: Vermont Center for Geographic Information (VCGI)
+- URL: https://maps.vcgi.vermont.gov/gisdata/vcgi/packaged_zips/CadastralParcels_VTPARCELS/VTPARCELS_Richmond.zip
+- Format: Shapefile (convert to GeoJSON for import)
+- Import: Use `scripts/import-parcels.ts` to load into Supabase
+
+**Infrastructure Data:**
+- Manual entry through admin interface
 - GPS coordinates collected in the field
-- The app will support manual entry of infrastructure points through an admin interface
+- Existing CAD drawings or maps of the water system
 
 ---
 
@@ -197,3 +272,4 @@ Parcel and infrastructure data sources to consider:
 4. **Map**: Verify aerial imagery loads, infrastructure points display, parcels render
 5. **Contacts**: Test full CRUD - create, view, edit, delete contacts
 6. **Mobile**: Test all forms on actual mobile device for touch usability
+7. **Parcel Import**: Run import script, verify parcels load on map, test viewport queries return correct subset
