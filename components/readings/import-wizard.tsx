@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Upload, Columns, CheckCircle, Play, FileCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CSVUpload } from "./csv-upload";
 
 interface Meter {
   id: string;
@@ -165,22 +166,12 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
         </CardHeader>
         <CardContent>
           {currentStep === "upload" && (
-            <div className="text-center py-12 border-2 border-dashed rounded-lg">
-              <Upload className="mx-auto h-12 w-12 text-slate-400" />
-              <p className="mt-4 text-sm text-slate-600">
-                CSV upload component will be added here
-              </p>
-              <p className="mt-1 text-xs text-slate-400">
-                Drag and drop a CSV file, or click to browse
-              </p>
-              {/* Temporary button to test navigation */}
-              <Button className="mt-4" onClick={() => {
-                setParsedCSV({ headers: ["Date", "Meter", "Chlorine"], rows: [] });
+            <CSVUpload
+              onUpload={(data) => {
+                setParsedCSV(data);
                 goToNextStep();
-              }}>
-                Continue (Demo)
-              </Button>
-            </div>
+              }}
+            />
           )}
 
           {currentStep === "map" && (
