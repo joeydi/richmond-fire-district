@@ -210,6 +210,100 @@ WHERE ST_Intersects(
 LIMIT 500;
 ```
 
+### Phase 8: Infrastructure Point Management
+
+**Features:**
+- Click on map to create new infrastructure points (admin only)
+- Edit existing infrastructure points via popup or modal
+- Support multiple images per infrastructure point using Supabase Storage
+- Image upload with preview and deletion
+
+**Database Updates:**
+
+```sql
+-- Infrastructure images table
+CREATE TABLE infrastructure_images (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  infrastructure_point_id UUID NOT NULL REFERENCES infrastructure_points(id) ON DELETE CASCADE,
+  storage_path TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  size_bytes INTEGER,
+  mime_type TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  created_by UUID REFERENCES profiles(id)
+);
+
+-- Index for fast lookups by infrastructure point
+CREATE INDEX infrastructure_images_point_idx ON infrastructure_images(infrastructure_point_id);
+
+-- RLS policies
+ALTER TABLE infrastructure_images ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can view images"
+  ON infrastructure_images FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Admins can manage images"
+  ON infrastructure_images FOR ALL TO authenticated
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'))
+  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+```
+
+**Supabase Storage Setup:**
+1. Create `infrastructure-images` bucket in Supabase Storage
+2. Configure bucket policies for authenticated access
+3. Set up image size limits and allowed MIME types
+
+**Implementation Steps:**
+
+1. **Database & Storage Setup**
+   - Create infrastructure_images table migration
+   - Set up Supabase Storage bucket with policies
+   - Create server actions for image upload/delete
+
+2. **Map Click-to-Create**
+   - Add click handler to map (when in "add mode")
+   - Show create form modal with coordinates pre-filled
+   - Admin-only access control
+
+3. **Infrastructure Form**
+   - Create/edit form with fields: name, type, status, notes
+   - Coordinates display (editable for fine-tuning)
+   - Image upload component with drag-and-drop
+   - Image gallery with delete capability
+
+4. **Edit Existing Points**
+   - Update infrastructure popup with "Edit" button (admin only)
+   - Open edit modal with current values
+   - Support updating location by dragging marker
+
+5. **Image Management**
+   - Multi-image upload with progress indicators
+   - Image preview/lightbox gallery
+   - Delete images with confirmation
+   - Optimize images for web (resize/compress on upload)
+
+**File Structure:**
+```
+components/
+├── map/
+│   ├── infrastructure-form.tsx    # Create/edit form modal
+│   ├── image-upload.tsx           # Drag-and-drop image upload
+│   └── image-gallery.tsx          # Display/manage images
+lib/
+├── actions/
+│   └── infrastructure.ts          # CRUD + image management
+└── supabase/
+    └── storage.ts                 # Storage helpers
+```
+
+**UI Flow:**
+1. Admin clicks "Add Point" button → enters "add mode"
+2. Click on map → modal opens with lat/lng pre-filled
+3. Fill form fields, upload images
+4. Save → point appears on map
+5. Click existing point → popup with "Edit" button
+6. Edit → modal with current data, can modify/add/remove images
+
 ---
 
 ## Key Files to Create/Modify
@@ -225,6 +319,10 @@ LIMIT 500;
 | `components/map/map-container.tsx` | MapboxGL initialization |
 | `scripts/import-parcels.ts` | Parcel data import script (shapefile → Supabase) |
 | `lib/actions/parcels.ts` | Viewport-based parcel queries with PostGIS |
+| `lib/actions/infrastructure.ts` | Infrastructure CRUD and image management |
+| `components/map/infrastructure-form.tsx` | Create/edit infrastructure point modal |
+| `components/map/image-upload.tsx` | Drag-and-drop multi-image upload |
+| `components/map/image-gallery.tsx` | Image preview gallery with delete |
 | `.env.local` | Environment variables (Supabase URL/key, Mapbox token) |
 
 ---
@@ -273,3 +371,4 @@ NEXT_PUBLIC_MAPBOX_TOKEN=your-mapbox-token
 5. **Contacts**: Test full CRUD - create, view, edit, delete contacts
 6. **Mobile**: Test all forms on actual mobile device for touch usability
 7. **Parcel Import**: Run import script, verify parcels load on map, test viewport queries return correct subset
+8. **Infrastructure Management**: Test click-to-create, edit existing points, image upload/delete, verify admin-only access
