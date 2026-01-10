@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { insertWaterProductionReading } from "@/lib/actions/readings";
+import { insertMeterReading } from "@/lib/actions/readings";
 import { toast } from "sonner";
 
 interface Meter {
@@ -22,11 +22,11 @@ interface Meter {
   name: string;
 }
 
-interface WaterProductionFormProps {
+interface MeterReadingFormProps {
   meters: Meter[];
 }
 
-export function WaterProductionForm({ meters }: WaterProductionFormProps) {
+export function MeterReadingForm({ meters }: MeterReadingFormProps) {
   const [meterId, setMeterId] = useState("");
   const [readingValue, setReadingValue] = useState("");
   const [notes, setNotes] = useState("");
@@ -38,7 +38,7 @@ export function WaterProductionForm({ meters }: WaterProductionFormProps) {
     setLoading(true);
 
     try {
-      const result = await insertWaterProductionReading({
+      const result = await insertMeterReading({
         meterId,
         readingValue: parseFloat(readingValue),
         recordedAt: new Date().toISOString(),

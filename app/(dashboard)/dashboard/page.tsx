@@ -68,7 +68,7 @@ async function RecentReadingsSection() {
   const allReadings = [
     ...data.waterReadings.map((r: any) => ({
       id: r.id,
-      type: "water_production",
+      type: "meter",
       value: r.reading_value,
       unit: "gal",
       recorded_at: r.recorded_at,

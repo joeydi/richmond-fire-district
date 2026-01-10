@@ -1,11 +1,11 @@
 import { requireEditor } from "@/lib/auth/roles";
 import { getMeters } from "@/lib/actions/readings";
-import { WaterProductionForm } from "@/components/readings/water-production-form";
+import { MeterReadingForm } from "@/components/readings/meter-reading-form";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 
-export default async function WaterProductionPage() {
+export default async function MeterReadingPage() {
   await requireEditor();
   const meters = await getMeters();
 
@@ -18,7 +18,7 @@ export default async function WaterProductionPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Water Production</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Meter Reading</h1>
           <p className="text-sm text-slate-600">Record a meter reading</p>
         </div>
       </div>
@@ -31,7 +31,7 @@ export default async function WaterProductionPage() {
           </p>
         </div>
       ) : (
-        <WaterProductionForm meters={meters} />
+        <MeterReadingForm meters={meters} />
       )}
     </div>
   );

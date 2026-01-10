@@ -16,13 +16,13 @@ interface RecentReadingsProps {
 }
 
 const typeLabels: Record<string, string> = {
-  water_production: "Water",
+  meter: "Meter",
   chlorine: "Chlorine",
   reservoir: "Reservoir",
 };
 
 const typeBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
-  water_production: "default",
+  meter: "default",
   chlorine: "secondary",
   reservoir: "outline",
 };

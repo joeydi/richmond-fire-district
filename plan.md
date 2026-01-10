@@ -20,7 +20,7 @@ A Next.js web app for the Richmond Fire District to manage their water system. F
 | Table | Purpose |
 |-------|---------|
 | `profiles` | User profiles extending Supabase Auth (id, email, full_name, role: admin/editor/member) |
-| `water_production_readings` | Meter readings (recorded_at, meter_id, reading_value, notes) |
+| `meter_readings` | Meter readings (recorded_at, meter_id, reading_value, notes) |
 | `chlorine_readings` | Chlorine levels (recorded_at, location_id, residual_level, notes) |
 | `reservoir_readings` | Reservoir levels (recorded_at, reservoir_id, level_inches, level_percent) |
 | `infrastructure_points` | Map points (type, name, lat/lng, properties, status) - types: shutoff_valve, hydrant, well, meter, reservoir |
@@ -42,7 +42,7 @@ A Next.js web app for the Richmond Fire District to manage their water system. F
 | Table | Member | Editor | Admin |
 |-------|--------|--------|-------|
 | `profiles` | View all | View all | View all, manage users |
-| `water_production_readings` | View | View, Insert, Update | Full access |
+| `meter_readings` | View | View, Insert, Update | Full access |
 | `chlorine_readings` | View | View, Insert, Update | Full access |
 | `reservoir_readings` | View | View, Insert, Update | Full access |
 | `infrastructure_points` | View | View | Full access |
@@ -65,7 +65,7 @@ app/
 │   ├── dashboard/page.tsx      # Monitoring dashboard
 │   ├── readings/
 │   │   ├── page.tsx            # Reading type selector
-│   │   ├── water-production/page.tsx
+│   │   ├── meter/page.tsx
 │   │   ├── chlorine/page.tsx
 │   │   ├── reservoir/page.tsx
 │   │   └── import/page.tsx     # CSV import wizard
@@ -316,7 +316,7 @@ lib/
 | `lib/auth/roles.ts` | Role-based access control helpers (requireAdmin, requireEditor, etc.) |
 | `middleware.ts` | Auth middleware for route protection |
 | `app/(dashboard)/layout.tsx` | Dashboard shell with navigation |
-| `components/readings/water-production-form.tsx` | Primary mobile data entry pattern |
+| `components/readings/meter-reading-form.tsx` | Primary mobile data entry pattern |
 | `components/map/map-container.tsx` | MapboxGL initialization |
 | `scripts/import-parcels.ts` | Parcel data import script (shapefile → Supabase) |
 | `lib/actions/parcels.ts` | Viewport-based parcel queries with PostGIS |
@@ -386,7 +386,7 @@ NEXT_PUBLIC_MAPBOX_TOKEN=your-mapbox-token
 **Features:**
 - CSV file upload for bulk importing reading data
 - Column mapping UI to match CSV columns to database fields
-- Support importing to water_production_readings, chlorine_readings, and/or reservoir_readings
+- Support importing to meter_readings, chlorine_readings, and/or reservoir_readings
 - Automatic time handling: if date has no time component, default to 12:00 PM
 - Duplicate detection: warn user when imported dates match existing records
 - Update confirmation: allow user to confirm updating existing records or skip duplicates
@@ -397,7 +397,7 @@ NEXT_PUBLIC_MAPBOX_TOKEN=your-mapbox-token
 3. Preview first few rows of CSV data
 4. Map columns:
    - Date column (required) - the timestamp for readings
-   - Meter reading column (optional) - maps to water_production_readings
+   - Meter reading column (optional) - maps to meter_readings
    - Chlorine level column (optional) - maps to chlorine_readings
    - Reservoir level column (optional) - maps to reservoir_readings
 5. Select target meter/reservoir if applicable
@@ -471,7 +471,7 @@ lib/
 
 ```sql
 -- Check for existing readings on specific dates (water production)
-SELECT recorded_at FROM water_production_readings
+SELECT recorded_at FROM meter_readings
 WHERE recorded_at = ANY($1::timestamptz[])
 AND meter_id = $2;
 
@@ -488,7 +488,7 @@ AND reservoir_id = $2;
 **Upsert Strategy:**
 ```sql
 -- Insert or update on conflict (water production example)
-INSERT INTO water_production_readings (recorded_at, meter_id, reading_value, notes)
+INSERT INTO meter_readings (recorded_at, meter_id, reading_value, notes)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (recorded_at, meter_id)
 DO UPDATE SET reading_value = EXCLUDED.reading_value, notes = EXCLUDED.notes;

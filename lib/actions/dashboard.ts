@@ -104,14 +104,14 @@ export async function getDashboardStatsFallback() {
   today.setHours(0, 0, 0, 0);
 
   const { count: todayCount } = await supabase
-    .from("water_production_readings")
+    .from("meter_readings")
     .select("*", { count: "exact", head: true })
     .gte("recorded_at", today.toISOString());
 
   // Get this month's readings
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const { count: monthCount } = await supabase
-    .from("water_production_readings")
+    .from("meter_readings")
     .select("*", { count: "exact", head: true })
     .gte("recorded_at", monthStart.toISOString());
 
@@ -140,7 +140,7 @@ export async function getRecentReadingsFallback(limit: number = 5) {
   const supabase = await createClient();
 
   const { data: waterReadings } = await supabase
-    .from("water_production_readings")
+    .from("meter_readings")
     .select(`
       id,
       reading_value,

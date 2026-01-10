@@ -250,7 +250,7 @@ export async function validateImportData(
     // Check meter duplicates
     if (mapping.meter && config.meterId) {
       const { data: existingMeter } = await supabase
-        .from("water_production_readings")
+        .from("meter_readings")
         .select("recorded_at")
         .eq("meter_id", config.meterId)
         .in("recorded_at", dates);
@@ -365,7 +365,7 @@ export async function executeImport(
       if (isDuplicate) {
         if (config.updateExisting) {
           const { error } = await supabase
-            .from("water_production_readings")
+            .from("meter_readings")
             .update({
               reading_value: row.meterValue,
               updated_at: new Date().toISOString(),
@@ -382,7 +382,7 @@ export async function executeImport(
           skipped++;
         }
       } else {
-        const { error } = await supabase.from("water_production_readings").insert({
+        const { error } = await supabase.from("meter_readings").insert({
           meter_id: config.meterId,
           reading_value: row.meterValue,
           recorded_at: dateISO,

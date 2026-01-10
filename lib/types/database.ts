@@ -41,7 +41,7 @@ export interface Reservoir {
   updated_at: string;
 }
 
-export interface WaterProductionReading {
+export interface MeterReading {
   id: string;
   recorded_at: string;
   meter_id: string | null;

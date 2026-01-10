@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 // Validation schemas
-const waterProductionSchema = z.object({
+const meterReadingSchema = z.object({
   meterId: z.string().uuid("Invalid meter"),
   readingValue: z.number().positive("Reading must be positive"),
   recordedAt: z.string().datetime(),
@@ -31,22 +31,22 @@ const reservoirSchema = z.object({
   notes: z.string().optional(),
 });
 
-export type WaterProductionInput = z.infer<typeof waterProductionSchema>;
+export type MeterReadingInput = z.infer<typeof meterReadingSchema>;
 export type ChlorineInput = z.infer<typeof chlorineSchema>;
 export type ReservoirInput = z.infer<typeof reservoirSchema>;
 
-export async function insertWaterProductionReading(
-  input: WaterProductionInput
+export async function insertMeterReading(
+  input: MeterReadingInput
 ): Promise<{ success: boolean; error?: string }> {
   const user = await requireEditor();
 
-  const parsed = waterProductionSchema.safeParse(input);
+  const parsed = meterReadingSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("water_production_readings").insert({
+  const { error } = await supabase.from("meter_readings").insert({
     meter_id: parsed.data.meterId,
     reading_value: parsed.data.readingValue,
     recorded_at: parsed.data.recordedAt,
@@ -58,7 +58,7 @@ export async function insertWaterProductionReading(
     return { success: false, error: error.message };
   }
 
-  revalidatePath("/dashboard/readings/water-production");
+  revalidatePath("/dashboard/readings/meter");
   revalidatePath("/dashboard");
   return { success: true };
 }

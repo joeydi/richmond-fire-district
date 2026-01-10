@@ -6,9 +6,9 @@ import { isEditorOrAdmin } from "@/lib/auth/roles";
 
 const readingTypes = [
   {
-    title: "Water Production",
+    title: "Meter Reading",
     description: "Record meter readings for water production",
-    href: "/dashboard/readings/water-production",
+    href: "/dashboard/readings/meter",
     icon: Droplets,
   },
   {
