@@ -61,6 +61,23 @@ export function ImageGallery({
     []
   );
 
+  // Handle escape key for lightbox - must prevent modal from also closing
+  useEffect(() => {
+    if (!selectedImage) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setSelectedImage(null);
+      }
+    };
+
+    // Use capture phase with highest priority
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [selectedImage]);
+
   const handleConfirmDelete = useCallback(async () => {
     if (!imageToDelete) return;
 
