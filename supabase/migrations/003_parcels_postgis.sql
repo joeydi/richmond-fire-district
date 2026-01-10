@@ -66,3 +66,75 @@ CREATE TRIGGER parcels_updated_at
   BEFORE UPDATE ON parcels
   FOR EACH ROW
   EXECUTE FUNCTION update_parcels_updated_at();
+
+-- Function to get parcels within a viewport bounding box
+CREATE OR REPLACE FUNCTION get_parcels_in_viewport(
+  min_lng DOUBLE PRECISION,
+  min_lat DOUBLE PRECISION,
+  max_lng DOUBLE PRECISION,
+  max_lat DOUBLE PRECISION,
+  limit_count INTEGER DEFAULT 500
+)
+RETURNS TABLE (
+  id UUID,
+  parcel_id TEXT,
+  owner_name TEXT,
+  address TEXT,
+  geometry TEXT,
+  properties JSONB,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.id,
+    p.parcel_id,
+    p.owner_name,
+    p.address,
+    ST_AsGeoJSON(p.geometry)::TEXT as geometry,
+    p.properties,
+    p.created_at,
+    p.updated_at
+  FROM parcels p
+  WHERE ST_Intersects(
+    p.geometry,
+    ST_MakeEnvelope(min_lng, min_lat, max_lng, max_lat, 4326)
+  )
+  LIMIT limit_count;
+END;
+$$;
+
+-- Function to get a single parcel by ID
+CREATE OR REPLACE FUNCTION get_parcel_by_id(parcel_uuid UUID)
+RETURNS TABLE (
+  id UUID,
+  parcel_id TEXT,
+  owner_name TEXT,
+  address TEXT,
+  geometry TEXT,
+  properties JSONB,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.id,
+    p.parcel_id,
+    p.owner_name,
+    p.address,
+    ST_AsGeoJSON(p.geometry)::TEXT as geometry,
+    p.properties,
+    p.created_at,
+    p.updated_at
+  FROM parcels p
+  WHERE p.id = parcel_uuid;
+END;
+$$;

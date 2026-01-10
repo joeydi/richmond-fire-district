@@ -25,8 +25,16 @@ export interface Parcel {
   owner_name: string | null;
   address: string | null;
   geometry: GeoJSON.Geometry;
+  properties?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export interface ViewportBounds {
+  minLng: number;
+  minLat: number;
+  maxLng: number;
+  maxLat: number;
 }
 
 export const INFRASTRUCTURE_COLORS: Record<InfrastructureType, string> = {
