@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Droplets, FlaskConical, Waves } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Droplets, FlaskConical, Waves, Upload } from "lucide-react";
+import { isEditorOrAdmin } from "@/lib/auth/roles";
 
 const readingTypes = [
   {
@@ -23,14 +25,26 @@ const readingTypes = [
   },
 ];
 
-export default function ReadingsPage() {
+export default async function ReadingsPage() {
+  const canEdit = await isEditorOrAdmin();
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Readings</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Select a reading type to record
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Readings</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Select a reading type to record
+          </p>
+        </div>
+        {canEdit && (
+          <Button asChild variant="outline">
+            <Link href="/dashboard/readings/import">
+              <Upload className="mr-2 h-4 w-4" />
+              Import CSV
+            </Link>
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
