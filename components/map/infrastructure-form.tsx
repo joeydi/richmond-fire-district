@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -95,17 +95,19 @@ export function InfrastructureForm({
     },
   });
 
-  // Reset form when point or coordinates change
-  const resetForm = () => {
-    form.reset({
-      name: point?.name || "",
-      type: point?.type || "hydrant",
-      status: point?.status || "active",
-      latitude: point?.latitude || initialCoordinates?.lat || 0,
-      longitude: point?.longitude || initialCoordinates?.lng || 0,
-      notes: point?.notes || "",
-    });
-  };
+  // Reset form when dialog opens with new point or coordinates
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        name: point?.name || "",
+        type: point?.type || "hydrant",
+        status: point?.status || "active",
+        latitude: point?.latitude || initialCoordinates?.lat || 0,
+        longitude: point?.longitude || initialCoordinates?.lng || 0,
+        notes: point?.notes || "",
+      });
+    }
+  }, [open, point, initialCoordinates, form]);
 
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
@@ -153,15 +155,7 @@ export function InfrastructureForm({
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(newOpen) => {
-        if (!newOpen) {
-          resetForm();
-        }
-        onOpenChange(newOpen);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>
@@ -241,7 +235,7 @@ export function InfrastructureForm({
                 type="number"
                 step="any"
                 placeholder="44.3710"
-                {...form.register("latitude")}
+                {...form.register("latitude", { valueAsNumber: true })}
               />
               {form.formState.errors.latitude && (
                 <p className="text-sm text-red-500">
@@ -257,7 +251,7 @@ export function InfrastructureForm({
                 type="number"
                 step="any"
                 placeholder="-72.9440"
-                {...form.register("longitude")}
+                {...form.register("longitude", { valueAsNumber: true })}
               />
               {form.formState.errors.longitude && (
                 <p className="text-sm text-red-500">

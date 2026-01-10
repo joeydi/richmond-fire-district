@@ -4,12 +4,14 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Plus, X } from "lucide-react";
+import { toast } from "sonner";
 import type {
   InfrastructurePoint,
   Parcel,
   InfrastructureType,
 } from "@/lib/types/infrastructure";
 import { getParcelsByViewport } from "@/lib/actions/map";
+import { deleteInfrastructurePoint } from "@/lib/actions/infrastructure";
 import { InfrastructureLayer } from "./infrastructure-layer";
 import { ParcelsLayer } from "./parcels-layer";
 import { InfrastructurePopup } from "./infrastructure-popup";
@@ -17,6 +19,7 @@ import { ParcelPopup } from "./parcel-popup";
 import { LayerControls, type LayerVisibility } from "./layer-controls";
 import { Legend } from "./legend";
 import { InfrastructureForm } from "./infrastructure-form";
+import { DeleteConfirmDialog } from "./delete-confirm-dialog";
 import { Button } from "@/components/ui/button";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
@@ -81,6 +84,16 @@ export function MapContainer({
     lat: number;
     lng: number;
   } | null>(null);
+  const [editingPoint, setEditingPoint] = useState<InfrastructurePoint | null>(
+    null
+  );
+
+  // Delete confirmation state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pointToDelete, setPointToDelete] = useState<InfrastructurePoint | null>(
+    null
+  );
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Debounce timer ref
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -231,6 +244,7 @@ export function MapContainer({
   const handleFormSuccess = useCallback(() => {
     setFormOpen(false);
     setNewPointCoordinates(null);
+    setEditingPoint(null);
     onRefresh?.();
   }, [onRefresh]);
 
@@ -238,8 +252,45 @@ export function MapContainer({
     setFormOpen(open);
     if (!open) {
       setNewPointCoordinates(null);
+      setEditingPoint(null);
     }
   }, []);
+
+  // Handle editing an infrastructure point
+  const handleEditPoint = useCallback((point: InfrastructurePoint) => {
+    setSelectedInfrastructure(null);
+    setEditingPoint(point);
+    setFormOpen(true);
+  }, []);
+
+  // Handle delete confirmation
+  const handleDeletePoint = useCallback((point: InfrastructurePoint) => {
+    setPointToDelete(point);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  // Confirm and execute delete
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pointToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await deleteInfrastructurePoint(pointToDelete.id);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success("Infrastructure point deleted successfully");
+        setSelectedInfrastructure(null);
+        onRefresh?.();
+      }
+    } catch {
+      toast.error("Failed to delete infrastructure point");
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setPointToDelete(null);
+    }
+  }, [pointToDelete, onRefresh]);
 
   return (
     <div className={className}>
@@ -273,6 +324,8 @@ export function MapContainer({
             point={selectedInfrastructure}
             isAdmin={isAdmin}
             onClose={handleCloseInfrastructurePopup}
+            onEdit={handleEditPoint}
+            onDelete={handleDeletePoint}
           />
           <ParcelPopup
             map={mapInstance}
@@ -322,8 +375,19 @@ export function MapContainer({
       <InfrastructureForm
         open={formOpen}
         onOpenChange={handleFormClose}
+        point={editingPoint}
         initialCoordinates={newPointCoordinates || undefined}
         onSuccess={handleFormSuccess}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Infrastructure Point"
+        description={`Are you sure you want to delete "${pointToDelete?.name}"? This action cannot be undone.`}
+        onConfirm={handleConfirmDelete}
+        isDeleting={isDeleting}
       />
     </div>
   );
