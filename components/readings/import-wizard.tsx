@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Upload, Columns, CheckCircle, Play, FileCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CSVUpload } from "./csv-upload";
+import { ColumnMapper } from "./column-mapper";
 
 interface Meter {
   id: string;
@@ -174,28 +175,20 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
             />
           )}
 
-          {currentStep === "map" && (
-            <div className="space-y-4">
-              <p className="text-sm text-slate-600">
-                Column mapping UI will be added here
-              </p>
-              {parsedCSV && (
-                <p className="text-xs text-slate-400">
-                  Detected columns: {parsedCSV.headers.join(", ")}
-                </p>
-              )}
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={goToPreviousStep}>
-                  Back
-                </Button>
-                <Button onClick={() => {
-                  setColumnMapping({ date: "Date", meter: "Meter", chlorine: null, reservoir: null });
-                  goToNextStep();
-                }}>
-                  Continue (Demo)
-                </Button>
-              </div>
-            </div>
+          {currentStep === "map" && parsedCSV && (
+            <ColumnMapper
+              parsedCSV={parsedCSV}
+              meters={meters}
+              reservoirs={reservoirs}
+              initialMapping={columnMapping}
+              initialConfig={importConfig}
+              onBack={goToPreviousStep}
+              onContinue={(mapping, config) => {
+                setColumnMapping(mapping);
+                setImportConfig(config);
+                goToNextStep();
+              }}
+            />
           )}
 
           {currentStep === "validate" && (
