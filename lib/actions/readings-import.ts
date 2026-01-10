@@ -78,7 +78,7 @@ const DATE_FORMATS = [
  * Parse a date string, trying multiple common formats.
  * If no time component is present, defaults to 12:00 PM.
  */
-export function parseDate(dateStr: string): { date: Date | null; hadTime: boolean } {
+function parseDate(dateStr: string): { date: Date | null; hadTime: boolean } {
   if (!dateStr || !dateStr.trim()) {
     return { date: null, hadTime: false };
   }

@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Upload, Columns, CheckCircle, Play, FileCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CSVUpload } from "./csv-upload";
 import { ColumnMapper } from "./column-mapper";
+import { ImportPreview } from "./import-preview";
+import {
+  validateImportData,
+  type ValidationResult as ServerValidationResult,
+  type ParsedRow,
+  type DuplicateInfo,
+} from "@/lib/actions/readings-import";
 
 interface Meter {
   id: string;
@@ -45,11 +52,13 @@ export interface ImportConfig {
 }
 
 export interface ValidationResult {
+  success: boolean;
+  parsedRows: ParsedRow[];
   validRows: number;
   invalidRows: number;
   duplicateRows: number;
   errors: { row: number; message: string }[];
-  duplicates: { row: number; date: string }[];
+  duplicates: DuplicateInfo[];
 }
 
 export interface ImportResult {
@@ -83,15 +92,17 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
   });
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
 
-  const goToNextStep = () => {
-    const nextIndex = currentStepIndex + 1;
+  const goToNextStep = useCallback(() => {
+    const currentIndex = steps.findIndex((s) => s.id === currentStep);
+    const nextIndex = currentIndex + 1;
     if (nextIndex < steps.length) {
       setCurrentStep(steps[nextIndex].id);
     }
-  };
+  }, [currentStep]);
 
   const goToPreviousStep = () => {
     const prevIndex = currentStepIndex - 1;
@@ -107,7 +118,40 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
     setImportConfig({ meterId: null, reservoirId: null, updateExisting: false });
     setValidationResult(null);
     setImportResult(null);
+    setIsValidating(false);
   };
+
+  // Run validation when entering validate step
+  useEffect(() => {
+    if (currentStep === "validate" && parsedCSV && !validationResult && !isValidating) {
+      const runValidation = async () => {
+        setIsValidating(true);
+        try {
+          const result = await validateImportData(
+            parsedCSV.headers,
+            parsedCSV.rows,
+            columnMapping,
+            importConfig
+          );
+          setValidationResult(result);
+        } catch (error) {
+          console.error("Validation error:", error);
+          setValidationResult({
+            success: false,
+            parsedRows: [],
+            validRows: 0,
+            invalidRows: parsedCSV.rows.length,
+            duplicateRows: 0,
+            errors: [{ row: 0, message: "Validation failed. Please try again." }],
+            duplicates: [],
+          });
+        } finally {
+          setIsValidating(false);
+        }
+      };
+      runValidation();
+    }
+  }, [currentStep, parsedCSV, columnMapping, importConfig, validationResult, isValidating]);
 
   return (
     <div className="space-y-6">
@@ -192,28 +236,26 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
           )}
 
           {currentStep === "validate" && (
-            <div className="space-y-4">
-              <p className="text-sm text-slate-600">
-                Validation results will be displayed here
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={goToPreviousStep}>
-                  Back
-                </Button>
-                <Button onClick={() => {
-                  setValidationResult({
-                    validRows: 10,
-                    invalidRows: 0,
-                    duplicateRows: 2,
-                    errors: [],
-                    duplicates: [],
-                  });
-                  goToNextStep();
-                }}>
-                  Continue (Demo)
-                </Button>
-              </div>
-            </div>
+            <ImportPreview
+              validationResult={validationResult || {
+                success: false,
+                parsedRows: [],
+                validRows: 0,
+                invalidRows: 0,
+                duplicateRows: 0,
+                errors: [],
+                duplicates: [],
+              }}
+              isValidating={isValidating}
+              onBack={() => {
+                setValidationResult(null);
+                goToPreviousStep();
+              }}
+              onContinue={(updateExisting) => {
+                setImportConfig((prev) => ({ ...prev, updateExisting }));
+                goToNextStep();
+              }}
+            />
           )}
 
           {currentStep === "import" && (
