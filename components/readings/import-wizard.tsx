@@ -10,10 +10,13 @@ import { ColumnMapper } from "./column-mapper";
 import { ImportPreview } from "./import-preview";
 import {
   validateImportData,
+  executeImport,
   type ValidationResult as ServerValidationResult,
+  type ImportResult as ServerImportResult,
   type ParsedRow,
   type DuplicateInfo,
 } from "@/lib/actions/readings-import";
+import { ImportResults } from "./import-results";
 
 interface Meter {
   id: string;
@@ -62,6 +65,7 @@ export interface ValidationResult {
 }
 
 export interface ImportResult {
+  success: boolean;
   inserted: number;
   updated: number;
   skipped: number;
@@ -93,6 +97,7 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
 
@@ -119,6 +124,35 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
     setValidationResult(null);
     setImportResult(null);
     setIsValidating(false);
+    setIsImporting(false);
+  };
+
+  const runImport = async () => {
+    if (!validationResult || validationResult.parsedRows.length === 0) return;
+
+    setIsImporting(true);
+    try {
+      const result = await executeImport(
+        validationResult.parsedRows,
+        columnMapping,
+        importConfig,
+        validationResult.duplicates
+      );
+      setImportResult(result);
+      goToNextStep();
+    } catch (error) {
+      console.error("Import error:", error);
+      setImportResult({
+        success: false,
+        inserted: 0,
+        updated: 0,
+        skipped: 0,
+        errors: [{ row: 0, message: "Import failed. Please try again." }],
+      });
+      goToNextStep();
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   // Run validation when entering validate step
@@ -259,55 +293,46 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
           )}
 
           {currentStep === "import" && (
-            <div className="space-y-4">
-              <p className="text-sm text-slate-600">
-                Ready to import {validationResult?.validRows} rows
-              </p>
-              {validationResult && validationResult.duplicateRows > 0 && (
-                <p className="text-sm text-amber-600">
-                  {validationResult.duplicateRows} rows match existing records
-                </p>
+            <div className="space-y-6">
+              {isImporting ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+                  <p className="mt-4 text-slate-600">Importing data...</p>
+                  <p className="text-sm text-slate-400">This may take a moment</p>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-lg border bg-slate-50 p-4">
+                    <h4 className="font-medium text-slate-900">Ready to Import</h4>
+                    <div className="mt-2 space-y-1 text-sm text-slate-600">
+                      <p>
+                        <span className="font-medium">{validationResult?.validRows || 0}</span> rows will be processed
+                      </p>
+                      {validationResult && validationResult.duplicateRows > 0 && (
+                        <p className="text-amber-600">
+                          <span className="font-medium">{validationResult.duplicateRows}</span> rows match existing records
+                          {importConfig.updateExisting
+                            ? " (will be updated)"
+                            : " (will be skipped)"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={goToPreviousStep}>
+                      Back
+                    </Button>
+                    <Button onClick={runImport}>
+                      Import Data
+                    </Button>
+                  </div>
+                </>
               )}
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={goToPreviousStep}>
-                  Back
-                </Button>
-                <Button onClick={() => {
-                  setImportResult({
-                    inserted: 8,
-                    updated: 2,
-                    skipped: 0,
-                    errors: [],
-                  });
-                  goToNextStep();
-                }}>
-                  Import Data
-                </Button>
-              </div>
             </div>
           )}
 
-          {currentStep === "results" && (
-            <div className="space-y-4">
-              {importResult && (
-                <div className="space-y-2">
-                  <p className="text-sm text-green-600">
-                    ✓ {importResult.inserted} rows inserted
-                  </p>
-                  {importResult.updated > 0 && (
-                    <p className="text-sm text-blue-600">
-                      ✓ {importResult.updated} rows updated
-                    </p>
-                  )}
-                  {importResult.skipped > 0 && (
-                    <p className="text-sm text-slate-600">
-                      • {importResult.skipped} rows skipped
-                    </p>
-                  )}
-                </div>
-              )}
-              <Button onClick={resetWizard}>Import Another File</Button>
-            </div>
+          {currentStep === "results" && importResult && (
+            <ImportResults result={importResult} onImportAnother={resetWizard} />
           )}
         </CardContent>
       </Card>
