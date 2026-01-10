@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { Trash2, Loader2, ImageOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -135,35 +136,36 @@ export function ImageGallery({
         ))}
       </div>
 
-      {/* Lightbox */}
-      {selectedImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-          onClick={() => setSelectedImage(null)}
-        >
-          <Button
-            size="icon"
-            variant="ghost"
-            className="absolute top-4 right-4 text-white hover:bg-white/20"
+      {/* Lightbox - rendered via portal to escape modal stacking context */}
+      {selectedImage &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
             onClick={() => setSelectedImage(null)}
           >
-            <X className="h-6 w-6" />
-          </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="absolute top-4 right-4 text-white hover:bg-white/20 z-10"
+              onClick={() => setSelectedImage(null)}
+            >
+              <X className="h-6 w-6" />
+            </Button>
 
-          <div className="relative max-w-[90vw] max-h-[90vh]">
-            {selectedImage.url && (
-              <Image
-                src={selectedImage.url}
-                alt={selectedImage.filename}
-                width={1200}
-                height={900}
-                className="object-contain max-h-[90vh]"
-                onClick={(e) => e.stopPropagation()}
-              />
-            )}
-          </div>
-        </div>
-      )}
+            <div className="relative w-full h-full flex items-center justify-center p-4">
+              {selectedImage.url && (
+                <Image
+                  src={selectedImage.url}
+                  alt={selectedImage.filename}
+                  fill
+                  className="object-contain"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* Delete Confirmation */}
       <DeleteConfirmDialog
