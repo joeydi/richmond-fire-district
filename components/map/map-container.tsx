@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { Plus, X } from "lucide-react";
 import type {
   InfrastructurePoint,
   Parcel,
@@ -15,6 +16,8 @@ import { InfrastructurePopup } from "./infrastructure-popup";
 import { ParcelPopup } from "./parcel-popup";
 import { LayerControls, type LayerVisibility } from "./layer-controls";
 import { Legend } from "./legend";
+import { InfrastructureForm } from "./infrastructure-form";
+import { Button } from "@/components/ui/button";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
@@ -41,12 +44,14 @@ interface MapContainerProps {
   className?: string;
   infrastructurePoints?: InfrastructurePoint[];
   isAdmin?: boolean;
+  onRefresh?: () => void;
 }
 
 export function MapContainer({
   className,
   infrastructurePoints = [],
   isAdmin = false,
+  onRefresh,
 }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -68,6 +73,14 @@ export function MapContainer({
   const [parcelClickLngLat, setParcelClickLngLat] = useState<
     [number, number] | undefined
   >(undefined);
+
+  // Add mode state
+  const [isAddMode, setIsAddMode] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [newPointCoordinates, setNewPointCoordinates] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   // Debounce timer ref
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -144,7 +157,7 @@ export function MapContainer({
     // Fetch parcels when viewport changes
     map.current.on("moveend", handleViewportChange);
 
-    // Track click position for parcel popups
+    // Track click position for parcel popups and add mode
     map.current.on("click", (e) => {
       setParcelClickLngLat([e.lngLat.lng, e.lngLat.lat]);
     });
@@ -159,18 +172,53 @@ export function MapContainer({
     };
   }, [fetchParcelsForViewport, handleViewportChange]);
 
+  // Handle add mode cursor and click
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    const handleAddModeClick = (e: mapboxgl.MapMouseEvent) => {
+      if (isAddMode) {
+        setNewPointCoordinates({
+          lat: e.lngLat.lat,
+          lng: e.lngLat.lng,
+        });
+        setFormOpen(true);
+        setIsAddMode(false);
+      }
+    };
+
+    if (isAddMode) {
+      mapInstance.getCanvas().style.cursor = "crosshair";
+      mapInstance.on("click", handleAddModeClick);
+    } else {
+      mapInstance.getCanvas().style.cursor = "";
+    }
+
+    return () => {
+      mapInstance.off("click", handleAddModeClick);
+      if (!isAddMode) {
+        mapInstance.getCanvas().style.cursor = "";
+      }
+    };
+  }, [mapInstance, isAddMode]);
+
   const handleInfrastructureClick = useCallback(
     (point: InfrastructurePoint) => {
+      if (isAddMode) return; // Ignore clicks on points in add mode
       setSelectedParcel(null);
       setSelectedInfrastructure(point);
     },
-    []
+    [isAddMode]
   );
 
-  const handleParcelClick = useCallback((parcel: Parcel) => {
-    setSelectedInfrastructure(null);
-    setSelectedParcel(parcel);
-  }, []);
+  const handleParcelClick = useCallback(
+    (parcel: Parcel) => {
+      if (isAddMode) return; // Ignore clicks on parcels in add mode
+      setSelectedInfrastructure(null);
+      setSelectedParcel(parcel);
+    },
+    [isAddMode]
+  );
 
   const handleCloseInfrastructurePopup = useCallback(() => {
     setSelectedInfrastructure(null);
@@ -178,6 +226,19 @@ export function MapContainer({
 
   const handleCloseParcelPopup = useCallback(() => {
     setSelectedParcel(null);
+  }, []);
+
+  const handleFormSuccess = useCallback(() => {
+    setFormOpen(false);
+    setNewPointCoordinates(null);
+    onRefresh?.();
+  }, [onRefresh]);
+
+  const handleFormClose = useCallback((open: boolean) => {
+    setFormOpen(open);
+    if (!open) {
+      setNewPointCoordinates(null);
+    }
   }, []);
 
   return (
@@ -226,6 +287,44 @@ export function MapContainer({
           <Legend />
         </>
       )}
+
+      {/* Add Point Button - Admin only */}
+      {mapLoaded && isAdmin && (
+        <div className="absolute bottom-4 right-4 z-10">
+          {isAddMode ? (
+            <div className="flex items-center gap-2">
+              <div className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow">
+                Click on map to place point
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsAddMode(false)}
+                className="bg-white"
+              >
+                <X className="mr-1 h-4 w-4" />
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={() => setIsAddMode(true)}
+              className="shadow-lg"
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              Add Point
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Infrastructure Form Modal */}
+      <InfrastructureForm
+        open={formOpen}
+        onOpenChange={handleFormClose}
+        initialCoordinates={newPointCoordinates || undefined}
+        onSuccess={handleFormSuccess}
+      />
     </div>
   );
 }
