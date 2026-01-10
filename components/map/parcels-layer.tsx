@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Map } from "mapbox-gl";
 import type { Parcel } from "@/lib/types/infrastructure";
 
@@ -14,7 +14,6 @@ interface ParcelsLayerProps {
 const SOURCE_ID = "parcels";
 const FILL_LAYER_ID = "parcels-fill";
 const LINE_LAYER_ID = "parcels-line";
-const HIGHLIGHT_LAYER_ID = "parcels-highlight";
 
 export function ParcelsLayer({
   map,
@@ -22,7 +21,8 @@ export function ParcelsLayer({
   visible = true,
   onParcelClick,
 }: ParcelsLayerProps) {
-  const [hoveredParcelId, setHoveredParcelId] = useState<string | null>(null);
+  // Use ref instead of state to avoid re-renders on hover
+  const hoveredParcelIdRef = useRef<string | number | null>(null);
 
   useEffect(() => {
     if (!map || parcels.length === 0) return;
@@ -98,32 +98,37 @@ export function ParcelsLayer({
       map.on("mousemove", FILL_LAYER_ID, (e) => {
         if (e.features && e.features.length > 0) {
           const feature = e.features[0];
-          const featureId = feature.id as string;
+          const featureId = feature.id;
 
-          if (hoveredParcelId !== null && hoveredParcelId !== featureId) {
+          if (
+            hoveredParcelIdRef.current !== null &&
+            hoveredParcelIdRef.current !== featureId
+          ) {
             map.setFeatureState(
-              { source: SOURCE_ID, id: hoveredParcelId },
+              { source: SOURCE_ID, id: hoveredParcelIdRef.current },
               { hover: false }
             );
           }
 
-          map.setFeatureState(
-            { source: SOURCE_ID, id: featureId },
-            { hover: true }
-          );
-          setHoveredParcelId(featureId);
+          if (featureId !== undefined) {
+            map.setFeatureState(
+              { source: SOURCE_ID, id: featureId },
+              { hover: true }
+            );
+            hoveredParcelIdRef.current = featureId;
+          }
           map.getCanvas().style.cursor = "pointer";
         }
       });
 
       map.on("mouseleave", FILL_LAYER_ID, () => {
-        if (hoveredParcelId !== null) {
+        if (hoveredParcelIdRef.current !== null) {
           map.setFeatureState(
-            { source: SOURCE_ID, id: hoveredParcelId },
+            { source: SOURCE_ID, id: hoveredParcelIdRef.current },
             { hover: false }
           );
         }
-        setHoveredParcelId(null);
+        hoveredParcelIdRef.current = null;
         map.getCanvas().style.cursor = "";
       });
 
@@ -161,7 +166,7 @@ export function ParcelsLayer({
         map.removeSource(SOURCE_ID);
       }
     };
-  }, [map, parcels, onParcelClick, hoveredParcelId]);
+  }, [map, parcels, onParcelClick]);
 
   // Toggle visibility
   useEffect(() => {
