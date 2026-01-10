@@ -41,6 +41,7 @@ const infrastructureTypes: InfrastructureType[] = [
   "well",
   "meter",
   "reservoir",
+  "other",
 ];
 
 const infrastructureStatuses: InfrastructureStatus[] = [
@@ -57,7 +58,7 @@ const statusLabels: Record<InfrastructureStatus, string> = {
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  type: z.enum(["shutoff_valve", "hydrant", "well", "meter", "reservoir"]),
+  type: z.enum(["shutoff_valve", "hydrant", "well", "meter", "reservoir", "other"]),
   status: z.enum(["active", "inactive", "maintenance"]),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),

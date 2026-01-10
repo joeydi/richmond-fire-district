@@ -3,7 +3,8 @@ export type InfrastructureType =
   | "hydrant"
   | "well"
   | "meter"
-  | "reservoir";
+  | "reservoir"
+  | "other";
 
 export type InfrastructureStatus = "active" | "inactive" | "maintenance";
 
@@ -56,6 +57,7 @@ export const INFRASTRUCTURE_COLORS: Record<InfrastructureType, string> = {
   well: "#3B82F6", // blue
   meter: "#22C55E", // green
   reservoir: "#8B5CF6", // purple
+  other: "#6B7280", // gray
 };
 
 export const INFRASTRUCTURE_LABELS: Record<InfrastructureType, string> = {
@@ -64,4 +66,5 @@ export const INFRASTRUCTURE_LABELS: Record<InfrastructureType, string> = {
   well: "Well",
   meter: "Meter",
   reservoir: "Reservoir",
+  other: "Other",
 };

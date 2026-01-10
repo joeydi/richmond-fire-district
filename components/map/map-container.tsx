@@ -40,6 +40,7 @@ const defaultLayerVisibility: LayerVisibility = {
     well: true,
     meter: true,
     reservoir: true,
+    other: true,
   },
 };
 
