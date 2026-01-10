@@ -131,7 +131,9 @@ export function InfrastructureLayer({
     }
 
     return () => {
-      // Cleanup on unmount
+      // Cleanup on unmount - check if map is still valid
+      if (!map.getStyle()) return;
+
       if (map.getLayer(LABELS_LAYER_ID)) {
         map.removeLayer(LABELS_LAYER_ID);
       }

@@ -148,7 +148,9 @@ export function ParcelsLayer({
     }
 
     return () => {
-      // Cleanup on unmount
+      // Cleanup on unmount - check if map is still valid
+      if (!map.getStyle()) return;
+
       if (map.getLayer(LINE_LAYER_ID)) {
         map.removeLayer(LINE_LAYER_ID);
       }
