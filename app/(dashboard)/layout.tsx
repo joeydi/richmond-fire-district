@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Toaster } from "sonner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -18,6 +19,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-slate-50">
+      <Toaster position="top-right" richColors />
       {/* Desktop sidebar */}
       <div className="hidden lg:flex lg:flex-shrink-0">
         <Sidebar isAdmin={isAdmin} />
