@@ -201,17 +201,19 @@ export function MapContainer({
       }
     };
 
+    const canvas = mapInstance.getCanvas();
     if (isAddMode) {
-      mapInstance.getCanvas().style.cursor = "crosshair";
+      if (canvas) canvas.style.cursor = "crosshair";
       mapInstance.on("click", handleAddModeClick);
     } else {
-      mapInstance.getCanvas().style.cursor = "";
+      if (canvas) canvas.style.cursor = "";
     }
 
     return () => {
       mapInstance.off("click", handleAddModeClick);
-      if (!isAddMode) {
-        mapInstance.getCanvas().style.cursor = "";
+      const canvas = mapInstance.getCanvas();
+      if (canvas && !isAddMode) {
+        canvas.style.cursor = "";
       }
     };
   }, [mapInstance, isAddMode]);
