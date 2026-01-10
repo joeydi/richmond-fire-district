@@ -22,7 +22,7 @@ A Next.js web app for the Richmond Fire District to manage their water system. F
 | `profiles` | User profiles extending Supabase Auth (id, email, full_name, role: admin/editor/member) |
 | `water_production_readings` | Meter readings (recorded_at, meter_id, reading_value, notes) |
 | `chlorine_readings` | Chlorine levels (recorded_at, location_id, residual_level, notes) |
-| `reservoir_readings` | Reservoir levels (recorded_at, reservoir_id, level_feet, level_percent) |
+| `reservoir_readings` | Reservoir levels (recorded_at, reservoir_id, level_inches, level_percent) |
 | `infrastructure_points` | Map points (type, name, lat/lng, properties, status) - types: shutoff_valve, hydrant, well, meter, reservoir |
 | `contacts` | Contact directory (name, address, phone, email, contact_type) |
 | `meters` | Reference table for water meters |

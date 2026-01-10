@@ -21,7 +21,7 @@ interface Meter {
 interface Reservoir {
   id: string;
   name: string;
-  max_level_feet: number | null;
+  max_level_inches: number | null;
 }
 
 interface ColumnMapperProps {

@@ -85,8 +85,8 @@ async function RecentReadingsSection() {
     ...data.reservoirReadings.map((r: any) => ({
       id: r.id,
       type: "reservoir",
-      value: r.level_feet,
-      unit: "ft",
+      value: r.level_inches,
+      unit: "in",
       recorded_at: r.recorded_at,
       location_name: r.reservoirs?.name ?? null,
     })),

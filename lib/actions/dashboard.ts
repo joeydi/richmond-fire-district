@@ -165,7 +165,7 @@ export async function getRecentReadingsFallback(limit: number = 5) {
     .from("reservoir_readings")
     .select(`
       id,
-      level_feet,
+      level_inches,
       level_percent,
       recorded_at,
       reservoirs (name)

@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 interface Reservoir {
   id: string;
   name: string;
-  max_level_feet: number | null;
+  max_level_inches: number | null;
 }
 
 interface ReservoirFormProps {
@@ -30,7 +30,7 @@ interface ReservoirFormProps {
 
 export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
   const [reservoirId, setReservoirId] = useState("");
-  const [levelFeet, setLevelFeet] = useState("");
+  const [levelInches, setLevelInches] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -40,8 +40,8 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
     [reservoirs, reservoirId]
   );
 
-  const level = parseFloat(levelFeet);
-  const maxLevel = selectedReservoir?.max_level_feet ?? 0;
+  const level = parseFloat(levelInches);
+  const maxLevel = selectedReservoir?.max_level_inches ?? 0;
   const percentage = useMemo(() => {
     if (isNaN(level) || !maxLevel) return 0;
     return Math.min(Math.max((level / maxLevel) * 100, 0), 100);
@@ -54,7 +54,7 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
     try {
       const result = await insertReservoirReading({
         reservoirId,
-        levelFeet: parseFloat(levelFeet),
+        levelInches: parseFloat(levelInches),
         levelPercent: maxLevel ? percentage : undefined,
         recordedAt: new Date().toISOString(),
         notes: notes || undefined,
@@ -62,7 +62,7 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
 
       if (result.success) {
         toast.success("Reading recorded successfully");
-        setLevelFeet("");
+        setLevelInches("");
         setNotes("");
         router.refresh();
       } else {
@@ -101,9 +101,9 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
                 {reservoirs.map((reservoir) => (
                   <SelectItem key={reservoir.id} value={reservoir.id} className="text-lg py-3">
                     {reservoir.name}
-                    {reservoir.max_level_feet && (
+                    {reservoir.max_level_inches && (
                       <span className="text-slate-500 ml-2">
-                        (max {reservoir.max_level_feet} ft)
+                        (max {reservoir.max_level_inches} in)
                       </span>
                     )}
                   </SelectItem>
@@ -114,7 +114,7 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="level" className="text-base">
-              Water Level (feet)
+              Water Level (inches)
             </Label>
             <Input
               id="level"
@@ -123,8 +123,8 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
               step="0.1"
               min="0"
               placeholder="0.0"
-              value={levelFeet}
-              onChange={(e) => setLevelFeet(e.target.value)}
+              value={levelInches}
+              onChange={(e) => setLevelInches(e.target.value)}
               required
               disabled={loading}
               className="h-16 text-2xl font-mono text-center"
@@ -167,7 +167,7 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
                     <p className="text-3xl font-bold text-slate-900">
                       {!isNaN(level) ? level.toFixed(1) : "—"}
                     </p>
-                    <p className="text-sm text-slate-600">feet</p>
+                    <p className="text-sm text-slate-600">inches</p>
                   </div>
                 </div>
               </div>
@@ -190,7 +190,7 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
 
           <Button
             type="submit"
-            disabled={loading || !reservoirId || !levelFeet}
+            disabled={loading || !reservoirId || !levelInches}
             className="h-14 w-full text-lg"
           >
             {loading ? "Recording..." : "Record Reading"}

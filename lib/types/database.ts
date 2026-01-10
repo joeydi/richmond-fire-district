@@ -35,7 +35,7 @@ export interface Reservoir {
   id: string;
   name: string;
   capacity_gallons: number | null;
-  max_level_feet: number | null;
+  max_level_inches: number | null;
   location: string | null;
   created_at: string;
   updated_at: string;
@@ -65,7 +65,7 @@ export interface ReservoirReading {
   id: string;
   recorded_at: string;
   reservoir_id: string | null;
-  level_feet: number;
+  level_inches: number;
   level_percent: number | null;
   notes: string | null;
   created_by: string | null;

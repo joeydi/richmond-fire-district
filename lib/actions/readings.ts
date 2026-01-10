@@ -25,7 +25,7 @@ const chlorineSchema = z.object({
 
 const reservoirSchema = z.object({
   reservoirId: z.string().uuid("Invalid reservoir"),
-  levelFeet: z.number().min(0, "Level must be positive"),
+  levelInches: z.number().min(0, "Level must be positive"),
   levelPercent: z.number().min(0).max(100).optional(),
   recordedAt: z.string().datetime(),
   notes: z.string().optional(),
@@ -104,7 +104,7 @@ export async function insertReservoirReading(
   const supabase = await createClient();
   const { error } = await supabase.from("reservoir_readings").insert({
     reservoir_id: parsed.data.reservoirId,
-    level_feet: parsed.data.levelFeet,
+    level_inches: parsed.data.levelInches,
     level_percent: parsed.data.levelPercent || null,
     recorded_at: parsed.data.recordedAt,
     notes: parsed.data.notes || null,
@@ -134,7 +134,7 @@ export async function getReservoirs() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("reservoirs")
-    .select("id, name, max_level_feet")
+    .select("id, name, max_level_inches")
     .order("name");
   return data ?? [];
 }

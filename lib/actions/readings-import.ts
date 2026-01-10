@@ -443,7 +443,7 @@ export async function executeImport(
           const { error } = await supabase
             .from("reservoir_readings")
             .update({
-              level_feet: row.reservoirValue,
+              level_inches: row.reservoirValue,
               updated_at: new Date().toISOString(),
             })
             .eq("reservoir_id", config.reservoirId)
@@ -460,7 +460,7 @@ export async function executeImport(
       } else {
         const { error } = await supabase.from("reservoir_readings").insert({
           reservoir_id: config.reservoirId,
-          level_feet: row.reservoirValue,
+          level_inches: row.reservoirValue,
           recorded_at: dateISO,
           created_by: user.id,
         });
