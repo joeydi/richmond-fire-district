@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import type { InfrastructurePoint, Parcel, InfrastructureType } from "@/lib/types/infrastructure";
+import type {
+  InfrastructurePoint,
+  Parcel,
+  InfrastructureType,
+} from "@/lib/types/infrastructure";
+import { getParcelsByViewport } from "@/lib/actions/map";
 import { InfrastructureLayer } from "./infrastructure-layer";
 import { ParcelsLayer } from "./parcels-layer";
 import { InfrastructurePopup } from "./infrastructure-popup";
@@ -14,8 +19,11 @@ import { Legend } from "./legend";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 // Richmond, VT area coordinates
-const DEFAULT_CENTER: [number, number] = [-72.9, 44.4];
-const DEFAULT_ZOOM = 13;
+const DEFAULT_CENTER: [number, number] = [-72.944, 44.371];
+const DEFAULT_ZOOM = 16;
+
+// Debounce delay for viewport changes (ms)
+const VIEWPORT_DEBOUNCE_MS = 300;
 
 const defaultLayerVisibility: LayerVisibility = {
   infrastructure: true,
@@ -32,14 +40,12 @@ const defaultLayerVisibility: LayerVisibility = {
 interface MapContainerProps {
   className?: string;
   infrastructurePoints?: InfrastructurePoint[];
-  parcels?: Parcel[];
   isAdmin?: boolean;
 }
 
 export function MapContainer({
   className,
   infrastructurePoints = [],
-  parcels = [],
   isAdmin = false,
 }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -51,6 +57,10 @@ export function MapContainer({
   const [layerVisibility, setLayerVisibility] =
     useState<LayerVisibility>(defaultLayerVisibility);
 
+  // Dynamically loaded parcels
+  const [parcels, setParcels] = useState<Parcel[]>([]);
+  const [parcelsLoading, setParcelsLoading] = useState(false);
+
   // Popup state
   const [selectedInfrastructure, setSelectedInfrastructure] =
     useState<InfrastructurePoint | null>(null);
@@ -59,13 +69,56 @@ export function MapContainer({
     [number, number] | undefined
   >(undefined);
 
+  // Debounce timer ref
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
   // Filter infrastructure points by visible types
   const visibleInfrastructurePoints = useMemo(() => {
     if (!layerVisibility.infrastructure) return [];
     return infrastructurePoints.filter(
-      (point) => layerVisibility.infrastructureTypes[point.type as InfrastructureType]
+      (point) =>
+        layerVisibility.infrastructureTypes[point.type as InfrastructureType]
     );
-  }, [infrastructurePoints, layerVisibility.infrastructure, layerVisibility.infrastructureTypes]);
+  }, [
+    infrastructurePoints,
+    layerVisibility.infrastructure,
+    layerVisibility.infrastructureTypes,
+  ]);
+
+  // Fetch parcels for current viewport
+  const fetchParcelsForViewport = useCallback(async () => {
+    if (!map.current) return;
+
+    const bounds = map.current.getBounds();
+    if (!bounds) return;
+
+    setParcelsLoading(true);
+
+    try {
+      const viewportParcels = await getParcelsByViewport({
+        minLng: bounds.getWest(),
+        minLat: bounds.getSouth(),
+        maxLng: bounds.getEast(),
+        maxLat: bounds.getNorth(),
+      });
+      setParcels(viewportParcels);
+    } catch (error) {
+      console.error("Error fetching parcels:", error);
+    } finally {
+      setParcelsLoading(false);
+    }
+  }, []);
+
+  // Debounced viewport change handler
+  const handleViewportChange = useCallback(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    debounceTimer.current = setTimeout(() => {
+      fetchParcelsForViewport();
+    }, VIEWPORT_DEBOUNCE_MS);
+  }, [fetchParcelsForViewport]);
 
   useEffect(() => {
     if (map.current || !mapContainer.current) return;
@@ -83,7 +136,13 @@ export function MapContainer({
     map.current.on("load", () => {
       setMapLoaded(true);
       setMapInstance(map.current);
+
+      // Initial parcel fetch
+      fetchParcelsForViewport();
     });
+
+    // Fetch parcels when viewport changes
+    map.current.on("moveend", handleViewportChange);
 
     // Track click position for parcel popups
     map.current.on("click", (e) => {
@@ -91,11 +150,14 @@ export function MapContainer({
     });
 
     return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
       map.current?.remove();
       map.current = null;
       setMapInstance(null);
     };
-  }, []);
+  }, [fetchParcelsForViewport, handleViewportChange]);
 
   const handleInfrastructureClick = useCallback(
     (point: InfrastructurePoint) => {
@@ -124,6 +186,11 @@ export function MapContainer({
       {!mapLoaded && (
         <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-slate-100">
           <div className="text-sm text-slate-500">Loading map...</div>
+        </div>
+      )}
+      {parcelsLoading && (
+        <div className="absolute right-16 top-4 z-10 rounded bg-white px-2 py-1 text-xs text-slate-500 shadow">
+          Loading parcels...
         </div>
       )}
       {mapLoaded && mapInstance && (

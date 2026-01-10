@@ -1,11 +1,10 @@
-import { getInfrastructurePoints, getParcels } from "@/lib/actions/map";
+import { getInfrastructurePoints } from "@/lib/actions/map";
 import { isAdmin } from "@/lib/auth/roles";
 import { MapView } from "./map-view";
 
 export default async function MapPage() {
-  const [infrastructurePoints, parcels, userIsAdmin] = await Promise.all([
+  const [infrastructurePoints, userIsAdmin] = await Promise.all([
     getInfrastructurePoints(),
-    getParcels(),
     isAdmin(),
   ]);
 
@@ -20,7 +19,6 @@ export default async function MapPage() {
       <div className="relative min-h-0 flex-1">
         <MapView
           infrastructurePoints={infrastructurePoints}
-          parcels={parcels}
           isAdmin={userIsAdmin}
         />
       </div>
