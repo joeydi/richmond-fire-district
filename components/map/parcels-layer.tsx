@@ -134,6 +134,15 @@ export function ParcelsLayer({
 
       // Click handler
       map.on("click", FILL_LAYER_ID, (e) => {
+        // Check if there's an infrastructure point at this location
+        // If so, skip the parcel click (infrastructure takes priority)
+        const infrastructureFeatures = map.queryRenderedFeatures(e.point, {
+          layers: ["infrastructure-layer"],
+        });
+        if (infrastructureFeatures.length > 0) {
+          return; // Let infrastructure layer handle the click
+        }
+
         if (e.features && e.features[0] && onParcelClick) {
           const feature = e.features[0];
           const parcel = parcels.find(
