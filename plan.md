@@ -67,7 +67,8 @@ app/
 │   │   ├── page.tsx            # Reading type selector
 │   │   ├── water-production/page.tsx
 │   │   ├── chlorine/page.tsx
-│   │   └── reservoir/page.tsx
+│   │   ├── reservoir/page.tsx
+│   │   └── import/page.tsx     # CSV import wizard
 │   ├── map/page.tsx            # System overview map
 │   ├── contacts/
 │   │   ├── page.tsx            # Contacts table
@@ -81,7 +82,7 @@ app/
 components/
 ├── ui/                         # shadcn/ui components
 ├── layout/                     # Sidebar, header, mobile-nav
-├── readings/                   # Mobile-optimized entry forms
+├── readings/                   # Mobile-optimized entry forms + import components
 ├── dashboard/                  # Charts, stats cards, KPI grid
 ├── map/                        # MapboxGL layers and controls
 └── contacts/                   # Table and forms
@@ -323,6 +324,10 @@ lib/
 | `components/map/infrastructure-form.tsx` | Create/edit infrastructure point modal |
 | `components/map/image-upload.tsx` | Drag-and-drop multi-image upload |
 | `components/map/image-gallery.tsx` | Image preview gallery with delete |
+| `app/(dashboard)/readings/import/page.tsx` | CSV import wizard for bulk readings |
+| `components/readings/csv-upload.tsx` | Drag-and-drop CSV file upload |
+| `components/readings/column-mapper.tsx` | Map CSV columns to reading fields |
+| `lib/actions/readings-import.ts` | Server actions for validation & import |
 | `.env.local` | Environment variables (Supabase URL/key, Mapbox token) |
 
 ---
@@ -372,3 +377,121 @@ NEXT_PUBLIC_MAPBOX_TOKEN=your-mapbox-token
 6. **Mobile**: Test all forms on actual mobile device for touch usability
 7. **Parcel Import**: Run import script, verify parcels load on map, test viewport queries return correct subset
 8. **Infrastructure Management**: Test click-to-create, edit existing points, image upload/delete, verify admin-only access
+9. **Readings Import**: Test CSV upload, column mapping, duplicate detection, and update confirmation
+
+---
+
+## Phase 9: Readings Data Import
+
+**Features:**
+- CSV file upload for bulk importing reading data
+- Column mapping UI to match CSV columns to database fields
+- Support importing to water_production_readings, chlorine_readings, and/or reservoir_readings
+- Automatic time handling: if date has no time component, default to 12:00 PM
+- Duplicate detection: warn user when imported dates match existing records
+- Update confirmation: allow user to confirm updating existing records or skip duplicates
+
+**UI Flow:**
+1. Navigate to readings import page (editor/admin only)
+2. Upload CSV file via drag-and-drop or file picker
+3. Preview first few rows of CSV data
+4. Map columns:
+   - Date column (required) - the timestamp for readings
+   - Meter reading column (optional) - maps to water_production_readings
+   - Chlorine level column (optional) - maps to chlorine_readings
+   - Reservoir level column (optional) - maps to reservoir_readings
+5. Select target meter/reservoir if applicable
+6. Click "Validate" to check for issues:
+   - Parse dates, apply 12:00 PM default for date-only values
+   - Check for existing records with matching dates
+   - Display warnings for duplicates
+7. Review validation results:
+   - Show count of new records to insert
+   - Show count of existing records that would be updated
+   - Allow user to choose: "Update existing" or "Skip duplicates"
+8. Click "Import" to execute
+9. Show success summary with counts
+
+**Implementation Steps:**
+
+1. **Create Import Page**
+   - Add route: `app/(dashboard)/readings/import/page.tsx`
+   - Editor/admin role check
+   - File upload component with CSV parsing
+
+2. **CSV Parsing & Preview**
+   - Use `papaparse` for CSV parsing
+   - Display column headers and sample rows
+   - Auto-detect potential date columns
+
+3. **Column Mapping UI**
+   - Dropdown selectors for each field type
+   - Validation that at least one reading type is mapped
+   - Target selector for meter/reservoir reference
+
+4. **Date Handling**
+   - Parse various date formats
+   - Detect if time component is present
+   - Apply 12:00 PM default for date-only values
+   - Convert to UTC for storage
+
+5. **Duplicate Detection**
+   - Query existing records for matching dates
+   - Group by reading type (meter/chlorine/reservoir)
+   - Display clear warning with affected row counts
+
+6. **Import Execution**
+   - Server action for batch insert/upsert
+   - Use transaction for atomicity
+   - Return detailed results (inserted, updated, skipped, errors)
+
+7. **Update Import Page Route**
+   - Add navigation link from readings page
+
+**File Structure:**
+```
+app/(dashboard)/readings/
+├── import/
+│   └── page.tsx              # Import wizard page
+components/
+├── readings/
+│   ├── csv-upload.tsx        # Drag-and-drop file upload
+│   ├── column-mapper.tsx     # Column mapping UI
+│   ├── import-preview.tsx    # Data preview table
+│   └── import-results.tsx    # Success/error summary
+lib/
+├── actions/
+│   └── readings-import.ts    # Server actions for validation & import
+```
+
+**Dependencies:**
+- `papaparse` - CSV parsing library
+
+**Database Queries:**
+
+```sql
+-- Check for existing readings on specific dates (water production)
+SELECT recorded_at FROM water_production_readings
+WHERE recorded_at = ANY($1::timestamptz[])
+AND meter_id = $2;
+
+-- Check for existing readings on specific dates (chlorine)
+SELECT recorded_at FROM chlorine_readings
+WHERE recorded_at = ANY($1::timestamptz[]);
+
+-- Check for existing readings on specific dates (reservoir)
+SELECT recorded_at FROM reservoir_readings
+WHERE recorded_at = ANY($1::timestamptz[])
+AND reservoir_id = $2;
+```
+
+**Upsert Strategy:**
+```sql
+-- Insert or update on conflict (water production example)
+INSERT INTO water_production_readings (recorded_at, meter_id, reading_value, notes)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (recorded_at, meter_id)
+DO UPDATE SET reading_value = EXCLUDED.reading_value, notes = EXCLUDED.notes;
+```
+
+**Note:** May need to add unique constraints on (recorded_at, meter_id) and (recorded_at, reservoir_id) to support upsert behavior
