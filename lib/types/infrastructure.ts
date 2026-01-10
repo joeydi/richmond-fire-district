@@ -11,12 +11,25 @@ export interface InfrastructurePoint {
   id: string;
   type: InfrastructureType;
   name: string;
-  lat: number;
-  lng: number;
+  latitude: number;
+  longitude: number;
   status: InfrastructureStatus;
+  notes?: string | null;
   properties: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export interface InfrastructureImage {
+  id: string;
+  infrastructure_point_id: string;
+  storage_path: string;
+  filename: string;
+  size_bytes?: number;
+  mime_type?: string;
+  url?: string; // Signed URL for display
+  created_at: string;
+  created_by?: string;
 }
 
 export interface Parcel {

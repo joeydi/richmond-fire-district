@@ -32,7 +32,7 @@ export function InfrastructureLayer({
         type: "Feature",
         geometry: {
           type: "Point",
-          coordinates: [point.lng, point.lat],
+          coordinates: [point.longitude, point.latitude],
         },
         properties: {
           id: point.id,

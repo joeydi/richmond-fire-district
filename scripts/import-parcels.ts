@@ -39,17 +39,16 @@ function reprojectCoords(coords: number[]): number[] {
 }
 
 // Recursively reproject all coordinates in a geometry
-function reprojectGeometry(
-  coordinates: GeoJSON.Position[] | GeoJSON.Position[][] | GeoJSON.Position[][][]
-): GeoJSON.Position[] | GeoJSON.Position[][] | GeoJSON.Position[][][] {
-  if (typeof coordinates[0] === "number") {
-    // This is a single coordinate [x, y]
+function reprojectGeometry(coordinates: unknown): unknown {
+  if (!Array.isArray(coordinates)) return coordinates;
+
+  // Check if this is a coordinate pair [x, y]
+  if (coordinates.length >= 2 && typeof coordinates[0] === "number") {
     return reprojectCoords(coordinates as number[]);
   }
+
   // Recursively process nested arrays
-  return (coordinates as unknown[]).map((coord) =>
-    reprojectGeometry(coord as GeoJSON.Position[] | GeoJSON.Position[][])
-  ) as GeoJSON.Position[] | GeoJSON.Position[][] | GeoJSON.Position[][][];
+  return coordinates.map((coord) => reprojectGeometry(coord));
 }
 
 const SHAPEFILE_URL =

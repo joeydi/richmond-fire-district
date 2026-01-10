@@ -86,7 +86,7 @@ export function InfrastructurePopup({
       closeOnClick: false,
       maxWidth: "300px",
     })
-      .setLngLat([point.lng, point.lat])
+      .setLngLat([point.longitude, point.latitude])
       .setHTML(html)
       .addTo(map);
 
