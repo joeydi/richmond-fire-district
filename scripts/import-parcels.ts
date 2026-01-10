@@ -8,15 +8,27 @@
  *
  * Environment:
  *   NEXT_PUBLIC_SUPABASE_URL - Supabase project URL
- *   SUPABASE_SERVICE_ROLE_KEY - Service role key (bypasses RLS)
+ *   SUPABASE_SECRET_KEY - Secret key (bypasses RLS)
  */
 
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { createClient } from "@supabase/supabase-js";
-import shp from "shpjs";
+import * as shapefile from "shapefile";
+import { createWriteStream, mkdirSync, existsSync, rmSync } from "fs";
+import { pipeline } from "stream/promises";
+import { Readable } from "stream";
+import { exec } from "child_process";
+import { promisify } from "util";
+import { join } from "path";
+
+const execAsync = promisify(exec);
 
 const SHAPEFILE_URL =
   "https://maps.vcgi.vermont.gov/gisdata/vcgi/packaged_zips/CadastralParcels_VTPARCELS/VTPARCELS_Richmond.zip";
 
+const TEMP_DIR = "/tmp/parcel-import";
 const BATCH_SIZE = 100;
 
 interface ParcelProperties {
@@ -29,10 +41,42 @@ interface ParcelProperties {
   [key: string]: unknown;
 }
 
-interface ParcelFeature {
-  type: "Feature";
-  geometry: GeoJSON.Geometry;
-  properties: ParcelProperties;
+async function downloadAndExtract(): Promise<string> {
+  // Create temp directory
+  if (existsSync(TEMP_DIR)) {
+    rmSync(TEMP_DIR, { recursive: true });
+  }
+  mkdirSync(TEMP_DIR, { recursive: true });
+
+  const zipPath = join(TEMP_DIR, "parcels.zip");
+
+  console.log("📥 Downloading shapefile from VCGI...");
+  console.log(`   URL: ${SHAPEFILE_URL}\n`);
+
+  // Download ZIP file
+  const response = await fetch(SHAPEFILE_URL);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const fileStream = createWriteStream(zipPath);
+  await pipeline(Readable.fromWeb(response.body as any), fileStream);
+
+  console.log("📦 Extracting shapefile...");
+
+  // Extract ZIP
+  await execAsync(`unzip -o "${zipPath}" -d "${TEMP_DIR}"`);
+
+  // Find the .shp file
+  const { stdout } = await execAsync(`find "${TEMP_DIR}" -name "*.shp" | head -1`);
+  const shpPath = stdout.trim();
+
+  if (!shpPath) {
+    throw new Error("No .shp file found in ZIP");
+  }
+
+  console.log(`   Found: ${shpPath}\n`);
+  return shpPath;
 }
 
 async function main() {
@@ -40,58 +84,101 @@ async function main() {
 
   // Validate environment
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (!supabaseUrl || !secretKey) {
     console.error("❌ Missing environment variables:");
     if (!supabaseUrl) console.error("   - NEXT_PUBLIC_SUPABASE_URL");
-    if (!serviceRoleKey) console.error("   - SUPABASE_SERVICE_ROLE_KEY");
+    if (!secretKey) console.error("   - SUPABASE_SECRET_KEY");
     console.error(
-      "\nAdd SUPABASE_SERVICE_ROLE_KEY to .env.local (get from Supabase dashboard > Settings > API)"
+      "\nAdd SUPABASE_SECRET_KEY to .env.local (get from Supabase dashboard > Settings > API)"
     );
     process.exit(1);
   }
 
-  // Create Supabase client with service role key (bypasses RLS)
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  // Create Supabase client with secret key (bypasses RLS)
+  const supabase = createClient(supabaseUrl, secretKey);
 
-  // Download and parse shapefile
-  console.log("📥 Downloading shapefile from VCGI...");
-  console.log(`   URL: ${SHAPEFILE_URL}\n`);
+  // Download and extract shapefile
+  const shpPath = await downloadAndExtract();
 
-  let geojson: GeoJSON.FeatureCollection;
-  try {
-    const response = await fetch(SHAPEFILE_URL);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  // Read shapefile
+  console.log("🔄 Reading shapefile...");
+  const source = await shapefile.open(shpPath);
+
+  const features: Array<{
+    geometry: GeoJSON.Geometry;
+    properties: ParcelProperties;
+  }> = [];
+
+  let result = await source.read();
+  while (!result.done) {
+    if (result.value && result.value.geometry) {
+      features.push({
+        geometry: result.value.geometry,
+        properties: result.value.properties as ParcelProperties,
+      });
     }
-    const buffer = await response.arrayBuffer();
-    console.log(`   Downloaded ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB\n`);
-
-    console.log("🔄 Parsing shapefile...");
-    const result = await shp(buffer);
-
-    // shpjs can return a single FeatureCollection or an array of them
-    if (Array.isArray(result)) {
-      geojson = result[0] as GeoJSON.FeatureCollection;
-    } else {
-      geojson = result as GeoJSON.FeatureCollection;
-    }
-
-    console.log(`   Found ${geojson.features.length} parcels\n`);
-  } catch (error) {
-    console.error("❌ Failed to download/parse shapefile:", error);
-    process.exit(1);
+    result = await source.read();
   }
 
-  // Clear existing parcels (optional - comment out to append)
+  console.log(`   Found ${features.length} features\n`);
+
+  // Group features by parcel_id to merge multi-part geometries
+  console.log("🔗 Merging multi-part parcels...");
+  const parcelMap = new Map<
+    string,
+    {
+      properties: ParcelProperties;
+      coordinates: GeoJSON.Position[][][];
+    }
+  >();
+
+  let unknownCount = 0;
+  for (const feature of features) {
+    if (!feature.geometry) continue;
+
+    const props = feature.properties;
+    const parcelId = props.SPAN || `UNKNOWN-${unknownCount++}`;
+
+    // Get polygon coordinates
+    let coords: GeoJSON.Position[][][];
+    if (feature.geometry.type === "Polygon") {
+      coords = [(feature.geometry as GeoJSON.Polygon).coordinates];
+    } else if (feature.geometry.type === "MultiPolygon") {
+      coords = (feature.geometry as GeoJSON.MultiPolygon).coordinates;
+    } else {
+      continue;
+    }
+
+    if (parcelMap.has(parcelId)) {
+      // Merge with existing parcel
+      const existing = parcelMap.get(parcelId)!;
+      existing.coordinates.push(...coords);
+    } else {
+      parcelMap.set(parcelId, {
+        properties: props,
+        coordinates: coords,
+      });
+    }
+  }
+
+  console.log(`   Merged into ${parcelMap.size} unique parcels\n`);
+
+  // Clear existing parcels
   console.log("🗑️  Clearing existing parcels...");
-  const { error: deleteError } = await supabase.from("parcels").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  const { error: deleteError } = await supabase
+    .from("parcels")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
   if (deleteError) {
     console.error("❌ Failed to clear parcels:", deleteError);
     process.exit(1);
   }
   console.log("   Done\n");
+
+  // Convert map to array for batch processing
+  const parcelEntries = Array.from(parcelMap.entries());
 
   // Process and insert parcels in batches
   console.log(`📤 Inserting parcels in batches of ${BATCH_SIZE}...`);
@@ -100,40 +187,25 @@ async function main() {
   let skipped = 0;
   let errors = 0;
 
-  const features = geojson.features as ParcelFeature[];
-
-  for (let i = 0; i < features.length; i += BATCH_SIZE) {
-    const batch = features.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < parcelEntries.length; i += BATCH_SIZE) {
+    const batch = parcelEntries.slice(i, i + BATCH_SIZE);
 
     const parcels = batch
-      .map((feature) => {
-        const props = feature.properties;
-
-        // Skip features without geometry
-        if (!feature.geometry) {
-          skipped++;
-          return null;
-        }
-
-        // Extract parcel ID (SPAN is Vermont's parcel ID system)
-        const parcelId = props.SPAN || `UNKNOWN-${i}`;
+      .map(([parcelId, data]) => {
+        const props = data.properties;
 
         // Combine owner fields
-        const ownerName = [props.OWNER1, props.OWNER2]
-          .filter(Boolean)
-          .join(", ") || null;
+        const ownerName =
+          [props.OWNER1, props.OWNER2].filter(Boolean).join(", ") || null;
 
         // Get address
         const address = props.E911ADDR || null;
 
-        // Ensure geometry is MultiPolygon
-        let geometry = feature.geometry;
-        if (geometry.type === "Polygon") {
-          geometry = {
-            type: "MultiPolygon",
-            coordinates: [geometry.coordinates],
-          } as GeoJSON.MultiPolygon;
-        }
+        // Create MultiPolygon from merged coordinates
+        const geometry: GeoJSON.MultiPolygon = {
+          type: "MultiPolygon",
+          coordinates: data.coordinates,
+        };
 
         return {
           parcel_id: parcelId,
@@ -153,7 +225,10 @@ async function main() {
     const { error } = await supabase.from("parcels").insert(parcels);
 
     if (error) {
-      console.error(`   ❌ Batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, error.message);
+      console.error(
+        `   ❌ Batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`,
+        error.message
+      );
       errors += parcels.length;
     } else {
       inserted += parcels.length;
@@ -163,9 +238,13 @@ async function main() {
     }
   }
 
-  console.log("\n");
-  console.log("✅ Import complete!");
-  console.log(`   Total parcels: ${features.length}`);
+  // Cleanup
+  console.log("\n\n🧹 Cleaning up temp files...");
+  rmSync(TEMP_DIR, { recursive: true });
+
+  console.log("\n✅ Import complete!");
+  console.log(`   Features in shapefile: ${features.length}`);
+  console.log(`   Unique parcels: ${parcelEntries.length}`);
   console.log(`   Inserted: ${inserted}`);
   console.log(`   Skipped: ${skipped}`);
   console.log(`   Errors: ${errors}`);
