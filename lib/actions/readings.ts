@@ -42,7 +42,7 @@ export async function insertWaterProductionReading(
 
   const parsed = waterProductionSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0].message };
+    return { success: false, error: parsed.error.issues[0].message };
   }
 
   const supabase = await createClient();
@@ -70,7 +70,7 @@ export async function insertChlorineReading(
 
   const parsed = chlorineSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0].message };
+    return { success: false, error: parsed.error.issues[0].message };
   }
 
   const supabase = await createClient();
@@ -98,7 +98,7 @@ export async function insertReservoirReading(
 
   const parsed = reservoirSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0].message };
+    return { success: false, error: parsed.error.issues[0].message };
   }
 
   const supabase = await createClient();
