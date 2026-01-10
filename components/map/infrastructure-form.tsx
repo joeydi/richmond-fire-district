@@ -33,6 +33,7 @@ import type {
   InfrastructureStatus,
 } from "@/lib/types/infrastructure";
 import { INFRASTRUCTURE_LABELS } from "@/lib/types/infrastructure";
+import { InfrastructureImages } from "./infrastructure-images";
 
 const infrastructureTypes: InfrastructureType[] = [
   "shutoff_valve",
@@ -270,6 +271,17 @@ export function InfrastructureForm({
               {...form.register("notes")}
             />
           </div>
+
+          {/* Images section - only show when editing */}
+          {isEditing && point && (
+            <div className="space-y-2 pt-2 border-t">
+              <Label>Images</Label>
+              <InfrastructureImages
+                infrastructurePointId={point.id}
+                isAdmin={true}
+              />
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-4">
             <Button
