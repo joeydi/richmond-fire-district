@@ -269,3 +269,153 @@ export async function getReservoirReadingsHistory(
 
   return { data: readings, count: count ?? 0 };
 }
+
+// Update functions
+export async function updateMeterReading(
+  id: string,
+  input: MeterReadingInput
+): Promise<{ success: boolean; error?: string }> {
+  await requireEditor();
+
+  const parsed = meterReadingSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("meter_readings")
+    .update({
+      meter_id: parsed.data.meterId,
+      reading_value: parsed.data.readingValue,
+      recorded_at: parsed.data.recordedAt,
+      notes: parsed.data.notes || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/dashboard/readings");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+export async function updateChlorineReading(
+  id: string,
+  input: ChlorineInput
+): Promise<{ success: boolean; error?: string }> {
+  await requireEditor();
+
+  const parsed = chlorineSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("chlorine_readings")
+    .update({
+      location_id: parsed.data.locationId || null,
+      residual_level: parsed.data.residualLevel,
+      recorded_at: parsed.data.recordedAt,
+      notes: parsed.data.notes || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/dashboard/readings");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+export async function updateReservoirReading(
+  id: string,
+  input: ReservoirInput
+): Promise<{ success: boolean; error?: string }> {
+  await requireEditor();
+
+  const parsed = reservoirSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("reservoir_readings")
+    .update({
+      reservoir_id: parsed.data.reservoirId,
+      level_inches: parsed.data.levelInches,
+      level_percent: parsed.data.levelPercent || null,
+      recorded_at: parsed.data.recordedAt,
+      notes: parsed.data.notes || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/dashboard/readings");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+// Delete functions
+export async function deleteMeterReading(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  await requireEditor();
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("meter_readings").delete().eq("id", id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/dashboard/readings");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+export async function deleteChlorineReading(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  await requireEditor();
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("chlorine_readings").delete().eq("id", id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/dashboard/readings");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+export async function deleteReservoirReading(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  await requireEditor();
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("reservoir_readings").delete().eq("id", id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/dashboard/readings");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
