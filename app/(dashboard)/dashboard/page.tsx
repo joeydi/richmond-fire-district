@@ -62,30 +62,12 @@ async function ChartSection() {
 
   const data = await getDailyUsage(startDate, endDate);
 
-  // Create a map of existing data by date
-  const dataMap = new Map(
-    data.map((item) => [
-      new Date(item.date).toISOString().split("T")[0],
-      {
-        total_usage: Number(item.total_usage),
-        reading_count: Number(item.reading_count),
-      },
-    ])
-  );
-
-  // Fill in all dates in the range (including dates with no data)
-  const chartData = [];
-  const currentDate = new Date(startDate);
-  while (currentDate <= endDate) {
-    const dateStr = currentDate.toISOString().split("T")[0];
-    const existing = dataMap.get(dateStr);
-    chartData.push({
-      date: dateStr,
-      total_usage: existing?.total_usage ?? 0,
-      reading_count: existing?.reading_count ?? 0,
-    });
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
+  // Convert data for the chart
+  const chartData = data.map((item) => ({
+    date: new Date(item.date).toISOString().split("T")[0],
+    total_usage: Number(item.total_usage),
+    reading_count: Number(item.reading_count),
+  }));
 
   return <WaterUsageChart data={chartData} title="Water Production" />;
 }
