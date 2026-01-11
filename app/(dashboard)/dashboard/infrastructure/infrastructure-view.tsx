@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { InfrastructureTable } from "@/components/infrastructure/infrastructure-table";
 import { DeleteDialog } from "@/components/infrastructure/delete-dialog";
+import { InfrastructureForm } from "@/components/map/infrastructure-form";
 import type { InfrastructurePoint } from "@/lib/types/infrastructure";
 
 interface InfrastructureViewProps {
@@ -31,6 +32,7 @@ export function InfrastructureView({
   const [pointToDelete, setPointToDelete] = useState<InfrastructurePoint | null>(
     null
   );
+  const [pointToEdit, setPointToEdit] = useState<InfrastructurePoint | null>(null);
 
   return (
     <>
@@ -45,12 +47,23 @@ export function InfrastructureView({
         sortOrder={sortOrder}
         isAdmin={isAdmin}
         onDelete={setPointToDelete}
+        onEdit={setPointToEdit}
       />
       <DeleteDialog
         point={pointToDelete}
         open={!!pointToDelete}
         onOpenChange={(open) => {
           if (!open) setPointToDelete(null);
+        }}
+      />
+      <InfrastructureForm
+        open={!!pointToEdit}
+        onOpenChange={(open) => {
+          if (!open) setPointToEdit(null);
+        }}
+        point={pointToEdit}
+        onSuccess={() => {
+          setPointToEdit(null);
         }}
       />
     </>
