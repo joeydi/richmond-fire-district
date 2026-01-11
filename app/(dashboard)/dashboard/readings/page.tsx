@@ -33,7 +33,15 @@ const readingTypes = [
   },
 ];
 
-export default async function ReadingsPage() {
+interface ReadingsPageProps {
+  searchParams: Promise<{
+    page?: string;
+  }>;
+}
+
+export default async function ReadingsPage({ searchParams }: ReadingsPageProps) {
+  const params = await searchParams;
+  const page = parseInt(params.page || "1", 10);
   const canEdit = await isEditorOrAdmin();
 
   return (
@@ -76,24 +84,32 @@ export default async function ReadingsPage() {
       </div>
 
       <Suspense fallback={<Skeleton className="h-[400px] rounded-lg" />}>
-        <ReadingsHistorySection />
+        <ReadingsHistorySection page={page} />
       </Suspense>
     </div>
   );
 }
 
-async function ReadingsHistorySection() {
+async function ReadingsHistorySection({ page }: { page: number }) {
+  const pageSize = 20;
+  const offset = (page - 1) * pageSize;
+
   const [meterData, chlorineData, reservoirData] = await Promise.all([
-    getMeterReadingsHistory({ limit: 25 }),
-    getChlorineReadingsHistory({ limit: 25 }),
-    getReservoirReadingsHistory({ limit: 25 }),
+    getMeterReadingsHistory({ limit: pageSize, offset }),
+    getChlorineReadingsHistory({ limit: pageSize, offset }),
+    getReservoirReadingsHistory({ limit: pageSize, offset }),
   ]);
 
   return (
     <ReadingsHistoryTable
       meterReadings={meterData.data}
+      meterCount={meterData.count}
       chlorineReadings={chlorineData.data}
+      chlorineCount={chlorineData.count}
       reservoirReadings={reservoirData.data}
+      reservoirCount={reservoirData.count}
+      currentPage={page}
+      pageSize={pageSize}
     />
   );
 }

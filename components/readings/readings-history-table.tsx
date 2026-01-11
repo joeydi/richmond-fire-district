@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -11,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   MeterReadingRow,
   ChlorineReadingRow,
@@ -19,22 +23,58 @@ import {
 
 interface ReadingsHistoryTableProps {
   meterReadings: MeterReadingRow[];
+  meterCount: number;
   chlorineReadings: ChlorineReadingRow[];
+  chlorineCount: number;
   reservoirReadings: ReservoirReadingRow[];
+  reservoirCount: number;
+  currentPage: number;
+  pageSize: number;
 }
 
 export function ReadingsHistoryTable({
   meterReadings,
+  meterCount,
   chlorineReadings,
+  chlorineCount,
   reservoirReadings,
+  reservoirCount,
+  currentPage,
+  pageSize,
 }: ReadingsHistoryTableProps) {
+  const [activeTab, setActiveTab] = useState("meter");
+  const router = useRouter();
+
+  const getCount = () => {
+    switch (activeTab) {
+      case "meter":
+        return meterCount;
+      case "chlorine":
+        return chlorineCount;
+      case "reservoir":
+        return reservoirCount;
+      default:
+        return 0;
+    }
+  };
+
+  const totalPages = Math.ceil(getCount() / pageSize);
+
+  const handlePageChange = (newPage: number) => {
+    router.push(`/dashboard/readings?page=${newPage}`);
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-lg font-medium">Readings History</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="meter" className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="w-full"
+        >
           <TabsList className="mb-4">
             <TabsTrigger value="meter">Meter</TabsTrigger>
             <TabsTrigger value="chlorine">Chlorine</TabsTrigger>
@@ -53,6 +93,37 @@ export function ReadingsHistoryTable({
             <ReservoirReadingsTable readings={reservoirReadings} />
           </TabsContent>
         </Tabs>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between border-t pt-4">
+            <p className="text-sm text-slate-600">
+              Showing {(currentPage - 1) * pageSize + 1} to{" "}
+              {Math.min(currentPage * pageSize, getCount())} of {getCount()}{" "}
+              readings
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
