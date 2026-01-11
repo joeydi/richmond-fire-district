@@ -54,6 +54,7 @@ const statusLabels: Record<InfrastructureStatus, string> = {
   active: "Active",
   inactive: "Inactive",
   maintenance: "Maintenance",
+  unknown: "Unknown",
 };
 
 const formSchema = z.object({
@@ -85,12 +86,20 @@ export function InfrastructureForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEditing = !!point;
 
+  // Helper to get a valid status for the form (unknown not allowed in form)
+  const getValidStatus = (status?: InfrastructureStatus): Exclude<InfrastructureStatus, 'unknown'> => {
+    if (status && status !== "unknown" && infrastructureStatuses.includes(status)) {
+      return status as Exclude<InfrastructureStatus, 'unknown'>;
+    }
+    return "active";
+  };
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: point?.name || "",
       type: point?.type || "hydrant",
-      status: point?.status || "active",
+      status: getValidStatus(point?.status),
       latitude: point?.latitude || initialCoordinates?.lat || 0,
       longitude: point?.longitude || initialCoordinates?.lng || 0,
       notes: point?.notes || "",
@@ -103,7 +112,7 @@ export function InfrastructureForm({
       form.reset({
         name: point?.name || "",
         type: point?.type || "hydrant",
-        status: point?.status || "active",
+        status: getValidStatus(point?.status),
         latitude: point?.latitude || initialCoordinates?.lat || 0,
         longitude: point?.longitude || initialCoordinates?.lng || 0,
         notes: point?.notes || "",
@@ -212,7 +221,7 @@ export function InfrastructureForm({
               <Select
                 value={form.watch("status")}
                 onValueChange={(value) =>
-                  form.setValue("status", value as InfrastructureStatus)
+                  form.setValue("status", value as "active" | "inactive" | "maintenance")
                 }
               >
                 <SelectTrigger>

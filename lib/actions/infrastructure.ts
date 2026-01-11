@@ -67,6 +67,7 @@ export async function createInfrastructurePoint(
   }
 
   revalidatePath("/dashboard/map");
+  revalidatePath("/dashboard/infrastructure");
   return { data, error: null };
 }
 
@@ -95,6 +96,7 @@ export async function updateInfrastructurePoint(
   }
 
   revalidatePath("/dashboard/map");
+  revalidatePath("/dashboard/infrastructure");
   return { data, error: null };
 }
 
@@ -132,6 +134,7 @@ export async function deleteInfrastructurePoint(
   }
 
   revalidatePath("/dashboard/map");
+  revalidatePath("/dashboard/infrastructure");
   return { success: true, error: null };
 }
 
@@ -152,6 +155,61 @@ export async function getInfrastructurePointById(
   }
 
   return data;
+}
+
+export interface GetInfrastructurePointsOptions {
+  search?: string;
+  type?: InfrastructureType | "all";
+  sortBy?: keyof InfrastructurePoint;
+  sortOrder?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+export async function getInfrastructurePoints(
+  options: GetInfrastructurePointsOptions = {}
+): Promise<{ data: InfrastructurePoint[]; count: number }> {
+  const {
+    search,
+    type,
+    sortBy = "name",
+    sortOrder = "asc",
+    limit = 50,
+    offset = 0,
+  } = options;
+
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("infrastructure_points")
+    .select("*", { count: "exact" });
+
+  // Apply search filter (name, notes)
+  if (search) {
+    query = query.or(
+      `name.ilike.%${search}%,notes.ilike.%${search}%`
+    );
+  }
+
+  // Apply type filter (skip if "all")
+  if (type && type !== "all") {
+    query = query.eq("type", type);
+  }
+
+  // Apply sorting
+  query = query.order(sortBy, { ascending: sortOrder === "asc" });
+
+  // Apply pagination
+  query = query.range(offset, offset + limit - 1);
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    console.error("Error fetching infrastructure points:", error);
+    return { data: [], count: 0 };
+  }
+
+  return { data: data ?? [], count: count ?? 0 };
 }
 
 // ============================================

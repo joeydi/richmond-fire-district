@@ -6,7 +6,7 @@ export type InfrastructureType =
   | "reservoir"
   | "other";
 
-export type InfrastructureStatus = "active" | "inactive" | "maintenance";
+export type InfrastructureStatus = "active" | "inactive" | "maintenance" | "unknown";
 
 export interface InfrastructurePoint {
   id: string;
@@ -67,4 +67,18 @@ export const INFRASTRUCTURE_LABELS: Record<InfrastructureType, string> = {
   meter: "Meter",
   reservoir: "Reservoir",
   other: "Other",
+};
+
+export const INFRASTRUCTURE_STATUS_LABELS: Record<InfrastructureStatus, string> = {
+  active: "Active",
+  inactive: "Inactive",
+  maintenance: "Maintenance",
+  unknown: "Unknown",
+};
+
+export const INFRASTRUCTURE_STATUS_COLORS: Record<InfrastructureStatus, string> = {
+  active: "#22C55E", // green
+  inactive: "#6B7280", // gray
+  maintenance: "#F59E0B", // amber
+  unknown: "#9CA3AF", // gray-400
 };

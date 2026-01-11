@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Droplets,
   Map,
+  Building2,
   Users,
   Settings,
 } from "lucide-react";
@@ -15,6 +16,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Readings", href: "/dashboard/readings", icon: Droplets },
   { name: "Map", href: "/dashboard/map", icon: Map },
+  { name: "Infrastructure", href: "/dashboard/infrastructure", icon: Building2 },
   { name: "Contacts", href: "/dashboard/contacts", icon: Users },
 ];
 
