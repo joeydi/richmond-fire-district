@@ -5,6 +5,7 @@ import { RecentReadings } from "@/components/dashboard/recent-readings";
 import {
   getDashboardStatsFallback,
   getRecentReadingsFallback,
+  getDailyUsage,
 } from "@/lib/actions/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -54,11 +55,21 @@ async function StatsCardsSection() {
 }
 
 async function ChartSection() {
-  // For now, return empty data - will be populated from actual readings
-  // Once the RPC function is set up, use getDailyUsage()
-  const mockData: { date: string; total_usage: number; reading_count: number }[] = [];
+  // Get daily usage data for the last 30 days
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - 30);
 
-  return <UsageChart data={mockData} title="Water Production" />;
+  const data = await getDailyUsage(startDate, endDate);
+
+  // Convert numeric dates to ISO strings for the chart
+  const chartData = data.map((item) => ({
+    date: new Date(item.date).toISOString().split("T")[0],
+    total_usage: Number(item.total_usage),
+    reading_count: Number(item.reading_count),
+  }));
+
+  return <UsageChart data={chartData} title="Water Production" />;
 }
 
 async function RecentReadingsSection() {
