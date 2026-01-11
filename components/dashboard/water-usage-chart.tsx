@@ -32,10 +32,13 @@ export function WaterUsageChart({
 
   const filteredData = filterDataByRange(data, range);
 
+  // Calculate daily usage rate (difference between consecutive readings)
+  const rateData = calculateDailyRate(filteredData);
+
   // ECharts requires timestamp values for datetime axis
-  const timestamps = filteredData.map((d) => new Date(d.date).getTime());
-  const usageValues = filteredData.map((d) => d.total_usage);
-  const readingCounts = filteredData.map((d) => d.reading_count);
+  const timestamps = rateData.map((d) => new Date(d.date).getTime());
+  const usageValues = rateData.map((d) => d.rate);
+  const readingCounts = rateData.map((d) => d.reading_count);
 
   const option = {
     responsive: true,
@@ -59,7 +62,7 @@ export function WaterUsageChart({
       axisLine: { lineStyle: { color: "#e2e8f0" } },
       axisLabel: { color: "#94a3b8", fontSize: 12 },
       splitLine: { lineStyle: { color: "#f1f5f9" } },
-      name: "Gallons",
+      name: "Gallons/Day",
       nameTextStyle: { color: "#64748b" },
     },
     tooltip: {
@@ -84,7 +87,7 @@ export function WaterUsageChart({
 
         return `<div class="text-sm">
           <p class="font-medium">${dateStr}</p>
-          <p class="text-blue-600 font-bold">${usage} gal</p>
+          <p class="text-blue-600 font-bold">${usage} gal/day</p>
           <p class="text-slate-500 text-xs">${readings} readings</p>
         </div>`;
       },
@@ -170,4 +173,47 @@ function filterDataByRange(data: UsageData[], range: DateRange): UsageData[] {
   }
 
   return data.filter((d) => new Date(d.date) >= cutoff);
+}
+
+interface RateData {
+  date: string;
+  rate: number;
+  reading_count: number;
+}
+
+function calculateDailyRate(data: UsageData[]): RateData[] {
+  if (data.length === 0) return [];
+
+  // Sort by date ascending to calculate differences correctly
+  const sorted = [...data].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+
+  const rateData: RateData[] = [];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const current = sorted[i];
+    const previous = sorted[i - 1];
+
+    // Calculate the difference in usage between consecutive days
+    const usageDiff = current.total_usage - previous.total_usage;
+
+    // Calculate days between readings (usually 1, but could be more if data is sparse)
+    const daysDiff = Math.max(
+      1,
+      (new Date(current.date).getTime() - new Date(previous.date).getTime()) /
+        (24 * 60 * 60 * 1000)
+    );
+
+    // Rate = usage difference / days (gallons per day)
+    const rate = usageDiff / daysDiff;
+
+    rateData.push({
+      date: current.date,
+      rate: Math.max(0, rate), // Avoid negative rates from meter resets
+      reading_count: current.reading_count,
+    });
+  }
+
+  return rateData;
 }

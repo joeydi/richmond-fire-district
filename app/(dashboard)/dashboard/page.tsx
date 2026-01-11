@@ -55,10 +55,10 @@ async function StatsCardsSection() {
 }
 
 async function ChartSection() {
-  // Get daily usage data for the last 30 days
+  // Get daily usage data for the past year to support all date range options
   const endDate = new Date();
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 30);
+  startDate.setFullYear(startDate.getFullYear() - 1);
 
   const data = await getDailyUsage(startDate, endDate);
 
