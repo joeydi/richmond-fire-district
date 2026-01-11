@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { StatsCards } from "@/components/dashboard/stats-cards";
-import { UsageChart } from "@/components/dashboard/usage-chart";
+import { WaterUsageChart } from "@/components/dashboard/water-usage-chart";
 import { RecentReadings } from "@/components/dashboard/recent-readings";
 import {
   getDashboardStatsFallback,
@@ -87,7 +87,7 @@ async function ChartSection() {
     currentDate.setDate(currentDate.getDate() + 1);
   }
 
-  return <UsageChart data={chartData} title="Water Production" />;
+  return <WaterUsageChart data={chartData} title="Water Production" />;
 }
 
 async function RecentReadingsSection() {
