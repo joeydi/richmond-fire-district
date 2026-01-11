@@ -247,7 +247,7 @@ export async function getReservoirReadingsHistory(
 
   const { data, count, error } = await supabase
     .from("reservoir_readings")
-    .select("id, level_inches, level_percent, recorded_at, notes, reservoirs (name)", {
+    .select("id, level_inches, level_percent, recorded_at, notes, reservoir_id", {
       count: "exact",
     })
     .order("recorded_at", { ascending: false })
@@ -258,13 +258,27 @@ export async function getReservoirReadingsHistory(
     return { data: [], count: 0 };
   }
 
-  const readings: ReservoirReadingRow[] = (data ?? []).map((r: any) => ({
+  // Fetch reservoir names separately
+  let reservoirNames: Record<string, string> = {};
+  if (data && data.length > 0) {
+    const reservoirIds = [...new Set((data as Array<{ reservoir_id: string }>).map(r => r.reservoir_id))];
+    const { data: reservoirs } = await supabase
+      .from("reservoirs")
+      .select("id, name")
+      .in("id", reservoirIds);
+
+    reservoirNames = Object.fromEntries(
+      (reservoirs ?? []).map((r: { id: string; name: string }) => [r.id, r.name])
+    );
+  }
+
+  const readings: ReservoirReadingRow[] = (data ?? []).map((r: { id: string; level_inches: number; level_percent: number | null; recorded_at: string; notes: string | null; reservoir_id: string }) => ({
     id: r.id,
     level_inches: r.level_inches,
     level_percent: r.level_percent,
     recorded_at: r.recorded_at,
     notes: r.notes,
-    reservoir_name: r.reservoirs?.name ?? null,
+    reservoir_name: reservoirNames[r.reservoir_id] ?? null,
   }));
 
   return { data: readings, count: count ?? 0 };
