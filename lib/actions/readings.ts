@@ -147,3 +147,125 @@ export async function getInfrastructureLocations() {
     .order("name");
   return data ?? [];
 }
+
+// Readings history queries
+export interface ReadingsHistoryParams {
+  limit?: number;
+  offset?: number;
+}
+
+export interface MeterReadingRow {
+  id: string;
+  reading_value: number;
+  recorded_at: string;
+  notes: string | null;
+  meter_name: string | null;
+}
+
+export interface ChlorineReadingRow {
+  id: string;
+  residual_level: number;
+  recorded_at: string;
+  notes: string | null;
+  location_name: string | null;
+}
+
+export interface ReservoirReadingRow {
+  id: string;
+  level_inches: number;
+  level_percent: number | null;
+  recorded_at: string;
+  notes: string | null;
+  reservoir_name: string | null;
+}
+
+export async function getMeterReadingsHistory(
+  params: ReadingsHistoryParams = {}
+): Promise<{ data: MeterReadingRow[]; count: number }> {
+  const { limit = 50, offset = 0 } = params;
+  const supabase = await createClient();
+
+  const { data, count, error } = await supabase
+    .from("meter_readings")
+    .select("id, reading_value, recorded_at, notes, meters (name)", {
+      count: "exact",
+    })
+    .order("recorded_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    console.error("Error fetching meter readings:", error);
+    return { data: [], count: 0 };
+  }
+
+  const readings: MeterReadingRow[] = (data ?? []).map((r: any) => ({
+    id: r.id,
+    reading_value: r.reading_value,
+    recorded_at: r.recorded_at,
+    notes: r.notes,
+    meter_name: r.meters?.name ?? null,
+  }));
+
+  return { data: readings, count: count ?? 0 };
+}
+
+export async function getChlorineReadingsHistory(
+  params: ReadingsHistoryParams = {}
+): Promise<{ data: ChlorineReadingRow[]; count: number }> {
+  const { limit = 50, offset = 0 } = params;
+  const supabase = await createClient();
+
+  const { data, count, error } = await supabase
+    .from("chlorine_readings")
+    .select("id, residual_level, recorded_at, notes, infrastructure_points (name)", {
+      count: "exact",
+    })
+    .order("recorded_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    console.error("Error fetching chlorine readings:", error);
+    return { data: [], count: 0 };
+  }
+
+  const readings: ChlorineReadingRow[] = (data ?? []).map((r: any) => ({
+    id: r.id,
+    residual_level: r.residual_level,
+    recorded_at: r.recorded_at,
+    notes: r.notes,
+    location_name: r.infrastructure_points?.name ?? null,
+  }));
+
+  return { data: readings, count: count ?? 0 };
+}
+
+export async function getReservoirReadingsHistory(
+  params: ReadingsHistoryParams = {}
+): Promise<{ data: ReservoirReadingRow[]; count: number }> {
+  const { limit = 50, offset = 0 } = params;
+  const supabase = await createClient();
+
+  const { data, count, error } = await supabase
+    .from("reservoir_readings")
+    .select("id, level_inches, level_percent, recorded_at, notes, reservoirs (name)", {
+      count: "exact",
+    })
+    .order("recorded_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    console.error("Error fetching reservoir readings:", error);
+    return { data: [], count: 0 };
+  }
+
+  const readings: ReservoirReadingRow[] = (data ?? []).map((r: any) => ({
+    id: r.id,
+    level_inches: r.level_inches,
+    level_percent: r.level_percent,
+    recorded_at: r.recorded_at,
+    notes: r.notes,
+    reservoir_name: r.reservoirs?.name ?? null,
+  }));
+
+  return { data: readings, count: count ?? 0 };
+}

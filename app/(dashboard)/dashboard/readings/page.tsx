@@ -1,8 +1,16 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Droplets, FlaskConical, Waves, Upload } from "lucide-react";
 import { isEditorOrAdmin } from "@/lib/auth/roles";
+import { ReadingsHistoryTable } from "@/components/readings/readings-history-table";
+import {
+  getMeterReadingsHistory,
+  getChlorineReadingsHistory,
+  getReservoirReadingsHistory,
+} from "@/lib/actions/readings";
 
 const readingTypes = [
   {
@@ -66,6 +74,26 @@ export default async function ReadingsPage() {
           </Link>
         ))}
       </div>
+
+      <Suspense fallback={<Skeleton className="h-[400px] rounded-lg" />}>
+        <ReadingsHistorySection />
+      </Suspense>
     </div>
+  );
+}
+
+async function ReadingsHistorySection() {
+  const [meterData, chlorineData, reservoirData] = await Promise.all([
+    getMeterReadingsHistory({ limit: 25 }),
+    getChlorineReadingsHistory({ limit: 25 }),
+    getReservoirReadingsHistory({ limit: 25 }),
+  ]);
+
+  return (
+    <ReadingsHistoryTable
+      meterReadings={meterData.data}
+      chlorineReadings={chlorineData.data}
+      reservoirReadings={reservoirData.data}
+    />
   );
 }
