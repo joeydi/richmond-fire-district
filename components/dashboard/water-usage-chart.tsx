@@ -41,10 +41,10 @@ export function WaterUsageChart({
     responsive: true,
     maintainAspectRatio: true,
     grid: {
-      left: "50px",
-      right: "10px",
-      top: "10px",
-      bottom: "40px",
+      left: "0px",
+      right: "0px",
+      top: "40px",
+      bottom: "20px",
       containLabel: true,
     },
     xAxis: {
@@ -117,7 +117,8 @@ export function WaterUsageChart({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-end pb-2">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-lg font-medium">{title}</CardTitle>
         <Select value={range} onValueChange={(v) => setRange(v as DateRange)}>
           <SelectTrigger className="w-[120px]">
             <SelectValue />
