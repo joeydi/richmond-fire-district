@@ -41,10 +41,10 @@ export function WaterUsageChart({
     responsive: true,
     maintainAspectRatio: true,
     grid: {
-      left: "60px",
-      right: "20px",
-      top: "20px",
-      bottom: "60px",
+      left: "50px",
+      right: "10px",
+      top: "10px",
+      bottom: "40px",
       containLabel: true,
     },
     xAxis: {
@@ -117,8 +117,7 @@ export function WaterUsageChart({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-lg font-medium">{title}</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-end pb-2">
         <Select value={range} onValueChange={(v) => setRange(v as DateRange)}>
           <SelectTrigger className="w-[120px]">
             <SelectValue />
@@ -131,7 +130,7 @@ export function WaterUsageChart({
           </SelectContent>
         </Select>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-0">
         {filteredData.length === 0 ? (
           <div className="flex h-[300px] items-center justify-center text-slate-500">
             No data available for this period
