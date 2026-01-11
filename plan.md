@@ -495,3 +495,154 @@ DO UPDATE SET reading_value = EXCLUDED.reading_value, notes = EXCLUDED.notes;
 ```
 
 **Note:** May need to add unique constraints on (recorded_at, meter_id) and (recorded_at, reservoir_id) to support upsert behavior
+
+---
+
+## Phase 10: Infrastructure Points Dashboard
+
+**Features:**
+- Dedicated page displaying all infrastructure points in a table format
+- Dropdown filter by infrastructure type (shutoff_valve, hydrant, well, meter, reservoir)
+- "All Types" option to view all infrastructure points
+- Sortable columns for name, type, status, and coordinates
+- Click rows to view/edit infrastructure point details (admin only)
+- Search functionality to filter by name
+- Responsive table design suitable for desktop and tablet viewing
+
+**Database Schema:**
+
+Uses existing `infrastructure_points` table:
+```sql
+-- Already exists in initial schema
+CREATE TABLE infrastructure_points (
+  id uuid primary key default uuid_generate_v4(),
+  type infrastructure_type not null,
+  name text not null,
+  latitude numeric not null,
+  longitude numeric not null,
+  properties jsonb default '{}',
+  status infrastructure_status not null default 'active',
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+```
+
+Where `infrastructure_type` enum includes: `shutoff_valve`, `hydrant`, `well`, `meter`, `reservoir`
+
+**Implementation Steps:**
+
+1. **Create Server Actions**
+   - Add `getInfrastructurePoints()` action with optional type filter
+   - Support sorting by any column
+   - Implement pagination for large datasets
+
+2. **Create Infrastructure Page**
+   - Add route: `app/(dashboard)/infrastructure/page.tsx`
+   - All users can view (read-only access), admins can edit
+
+3. **Build Infrastructure Table Component**
+   - Columns: Name, Type, Status, Latitude, Longitude, Actions
+   - Sortable headers
+   - Row click handler to open details (modal or side panel)
+   - Admin-only edit button
+
+4. **Build Filter Components**
+   - Dropdown for infrastructure type filter
+   - Options: "All Types", "Shutoff Valve", "Hydrant", "Well", "Meter", "Reservoir"
+   - Search input for name filtering
+   - Apply filters with query params for URL state
+
+5. **Build Details Modal**
+   - Display full infrastructure point details (name, type, status, coordinates, notes)
+   - Edit button (admin only) to update fields
+   - Close/dismiss functionality
+
+6. **Update Navigation**
+   - Add "Infrastructure" link to sidebar in dashboard layout
+   - Place between Map and Contacts
+
+**File Structure:**
+```
+app/(dashboard)/
+├── infrastructure/
+│   └── page.tsx              # Infrastructure points page
+
+components/
+├── infrastructure/
+│   ├── infrastructure-table.tsx    # Table display
+│   ├── type-filter.tsx              # Type dropdown filter
+│   ├── search-bar.tsx               # Name search
+│   └── details-modal.tsx             # Details and edit modal
+
+lib/
+├── actions/
+│   └── infrastructure.ts       # Server actions for fetching/filtering
+```
+
+**UI Flow:**
+1. User navigates to Infrastructure page
+2. Page loads all infrastructure points by default
+3. User can filter by type using dropdown (updates table in real-time)
+4. User can search by name to narrow results
+5. Click table row → opens details modal
+6. In modal, admins can click "Edit" to modify point details
+7. Save changes → table updates, modal closes
+
+**Component Details:**
+
+`infrastructure-table.tsx`:
+- Display data in sortable table format
+- Columns: name, type, status, latitude, longitude
+- Highlight row on hover
+- Click to open details
+
+`type-filter.tsx`:
+- Dropdown select with options for each type
+- Default "All Types" option
+- On change, filter table and update URL
+
+`search-bar.tsx`:
+- Text input for name search
+- Real-time filtering as user types
+- Clear button to reset
+
+`details-modal.tsx`:
+- Modal/dialog showing all infrastructure point details
+- Read-only view for non-admins
+- Edit form for admins with all editable fields
+- Save/Cancel buttons in edit mode
+
+**Database Queries:**
+
+```sql
+-- Get all infrastructure points
+SELECT * FROM infrastructure_points
+ORDER BY name ASC;
+
+-- Get infrastructure points by type
+SELECT * FROM infrastructure_points
+WHERE type = $1
+ORDER BY name ASC;
+
+-- Search infrastructure points by name
+SELECT * FROM infrastructure_points
+WHERE name ILIKE $1
+ORDER BY name ASC;
+
+-- Combine filter and search
+SELECT * FROM infrastructure_points
+WHERE (type = $1 OR $1 IS NULL)
+  AND (name ILIKE $2 OR $2 IS NULL)
+ORDER BY name ASC;
+```
+
+**Dependencies:**
+- Uses existing shadcn/ui table components
+- Uses existing modal/dialog components
+
+**Integration Notes:**
+- Infrastructure types displayed as badges with color coding
+- Status field (active/inactive/maintenance/unknown) shown with appropriate styling
+- Coordinates displayed with precision suitable for GPS (6-8 decimal places)
+- Page accessible to all authenticated users (view-only for non-admins)
