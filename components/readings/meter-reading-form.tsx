@@ -27,7 +27,7 @@ interface MeterReadingFormProps {
 }
 
 export function MeterReadingForm({ meters }: MeterReadingFormProps) {
-  const [meterId, setMeterId] = useState("");
+  const [meterId, setMeterId] = useState(meters[0].id ?? '');
   const [readingValue, setReadingValue] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);

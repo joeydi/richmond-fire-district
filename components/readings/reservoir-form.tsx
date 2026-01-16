@@ -29,7 +29,7 @@ interface ReservoirFormProps {
 }
 
 export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
-  const [reservoirId, setReservoirId] = useState("");
+  const [reservoirId, setReservoirId] = useState(reservoirs[0].id ?? '');
   const [levelInches, setLevelInches] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
