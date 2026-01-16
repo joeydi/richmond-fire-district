@@ -17,7 +17,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
   const sortBy = (params.sortBy as keyof Contact) || "name";
   const sortOrder = (params.sortOrder as "asc" | "desc") || "asc";
   const page = parseInt(params.page || "1", 10);
-  const pageSize = 20;
+  const pageSize = 100;
 
   const [{ data: contacts, count }, userCanEdit] = await Promise.all([
     getContacts({
