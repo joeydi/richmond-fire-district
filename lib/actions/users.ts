@@ -32,21 +32,26 @@ export async function getUser(id: string): Promise<Profile | null> {
   return data;
 }
 
-export async function updateUserRole(
+export async function updateUser(
   userId: string,
-  role: UserRole
+  data: { name?: string; role?: UserRole }
 ): Promise<{ success: boolean; error?: string }> {
   const admin = await requireAdmin();
 
   // Prevent admin from changing their own role
-  if (admin.id === userId) {
+  if (data.role && admin.id === userId) {
     return { success: false, error: "You cannot change your own role" };
   }
 
   const supabase = await createClient();
+
+  const updateData: { full_name?: string; role?: UserRole } = {};
+  if (data.name !== undefined) updateData.full_name = data.name;
+  if (data.role !== undefined) updateData.role = data.role;
+
   const { error } = await supabase
     .from("profiles")
-    .update({ role })
+    .update(updateData)
     .eq("id", userId);
 
   if (error) {
@@ -59,6 +64,7 @@ export async function updateUserRole(
 
 export async function createUser(
   email: string,
+  name: string,
   role: UserRole = "member"
 ): Promise<{ success: boolean; error?: string }> {
   await requireAdmin();
@@ -66,14 +72,19 @@ export async function createUser(
   const adminClient = createAdminClient();
 
   // Create user via Supabase Auth without sending invite email
-  const { error } = await adminClient.auth.admin.createUser({
+  const { data, error } = await adminClient.auth.admin.createUser({
     email,
     email_confirm: true,
-    user_metadata: { role },
+    user_metadata: { role, full_name: name },
   });
 
   if (error) {
     return { success: false, error: error.message };
+  }
+
+  // Update the profile with the name
+  if (data.user && name) {
+    await adminClient.from("profiles").update({ full_name: name }).eq("id", data.user.id);
   }
 
   revalidatePath("/dashboard/admin/users");

@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { updateUserRole } from "@/lib/actions/users";
+import { updateUser } from "@/lib/actions/users";
 import { toast } from "sonner";
 import type { Profile, UserRole } from "@/lib/types/database";
 
@@ -29,21 +29,27 @@ interface EditUserFormProps {
 }
 
 export function EditUserForm({ user, isOwnAccount }: EditUserFormProps) {
+  const [name, setName] = useState(user.full_name || "");
   const [role, setRole] = useState<UserRole>(user.role);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  const hasChanges = name !== (user.full_name || "") || role !== user.role;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const result = await updateUserRole(user.id, role);
+      const result = await updateUser(user.id, {
+        name,
+        role: isOwnAccount ? undefined : role,
+      });
       if (result.success) {
-        toast.success("User role updated successfully");
+        toast.success("User updated successfully");
         router.push("/dashboard/admin/users");
       } else {
-        toast.error(result.error || "Failed to update user role");
+        toast.error(result.error || "Failed to update user");
       }
     } catch {
       toast.error("An unexpected error occurred");
@@ -67,7 +73,13 @@ export function EditUserForm({ user, isOwnAccount }: EditUserFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
-            <Input id="name" value={user.full_name || "—"} disabled />
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={loading}
+              placeholder="Enter name"
+            />
           </div>
 
           <div className="space-y-2">
@@ -114,11 +126,9 @@ export function EditUserForm({ user, isOwnAccount }: EditUserFormProps) {
             >
               Cancel
             </Button>
-            {!isOwnAccount && (
-              <Button type="submit" disabled={loading || role === user.role}>
-                {loading ? "Saving..." : "Save Changes"}
-              </Button>
-            )}
+            <Button type="submit" disabled={loading || !hasChanges}>
+              {loading ? "Saving..." : "Save Changes"}
+            </Button>
           </div>
         </form>
       </CardContent>

@@ -27,6 +27,7 @@ import type { UserRole } from "@/lib/types/database";
 
 export function CreateUserDialog() {
   const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("member");
   const [loading, setLoading] = useState(false);
@@ -36,10 +37,11 @@ export function CreateUserDialog() {
     setLoading(true);
 
     try {
-      const result = await createUser(email, role);
+      const result = await createUser(email, name, role);
       if (result.success) {
         toast.success("User created successfully");
         setOpen(false);
+        setName("");
         setEmail("");
         setRole("member");
       } else {
@@ -70,6 +72,17 @@ export function CreateUserDialog() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={loading}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
