@@ -8,7 +8,19 @@ import {
   deleteMeterReading,
   deleteChlorineReading,
   deleteReservoirReading,
+  updateMeterReading,
+  updateChlorineReading,
+  updateReservoirReading,
 } from "@/lib/actions/readings";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -144,9 +156,21 @@ export function ReadingsHistoryTable({
   );
 }
 
+// Helper to convert ISO datetime to local datetime-local input format
+function toLocalDateTimeString(isoString: string): string {
+  const date = new Date(isoString);
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+}
+
 function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }) {
   const [isPending, startTransition] = useTransition();
   const [readingToDelete, setReadingToDelete] = useState<string | null>(null);
+  const [readingToEdit, setReadingToEdit] = useState<MeterReadingRow | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [editDateTime, setEditDateTime] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   const handleDelete = async () => {
     if (!readingToDelete) return;
@@ -161,6 +185,33 @@ function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }) {
     });
 
     setReadingToDelete(null);
+  };
+
+  const openEditDialog = (reading: MeterReadingRow) => {
+    setReadingToEdit(reading);
+    setEditValue(reading.reading_value.toString());
+    setEditDateTime(toLocalDateTimeString(reading.recorded_at));
+    setEditNotes(reading.notes ?? "");
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!readingToEdit) return;
+
+    startTransition(async () => {
+      const result = await updateMeterReading(readingToEdit.id, {
+        meterId: readingToEdit.meter_id,
+        readingValue: parseFloat(editValue),
+        recordedAt: new Date(editDateTime).toISOString(),
+        notes: editNotes || undefined,
+      });
+      if (result.success) {
+        toast.success("Meter reading updated");
+        setReadingToEdit(null);
+      } else {
+        toast.error(result.error || "Failed to update reading");
+      }
+    });
   };
 
   if (readings.length === 0) {
@@ -201,7 +252,7 @@ function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }) {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {}}
+                    onClick={() => openEditDialog(reading)}
                     disabled={isPending}
                   >
                     <Pencil className="h-4 w-4" />
@@ -220,6 +271,58 @@ function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }) {
           ))}
         </TableBody>
       </Table>
+
+      {/* Edit Dialog */}
+      <Dialog open={readingToEdit !== null} onOpenChange={(open) => !open && setReadingToEdit(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Meter Reading</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-meter-datetime">Date & Time</Label>
+              <Input
+                id="edit-meter-datetime"
+                type="datetime-local"
+                value={editDateTime}
+                onChange={(e) => setEditDateTime(e.target.value)}
+                required
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-meter-value">Reading Value (gallons)</Label>
+              <Input
+                id="edit-meter-value"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                required
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-meter-notes">Notes (optional)</Label>
+              <Textarea
+                id="edit-meter-notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setReadingToEdit(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isPending || !editValue || !editDateTime}>
+                {isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={readingToDelete !== null} onOpenChange={(open) => !open && setReadingToDelete(null)}>
         <AlertDialogContent>
@@ -248,6 +351,10 @@ function ChlorineReadingsTable({
 }) {
   const [isPending, startTransition] = useTransition();
   const [readingToDelete, setReadingToDelete] = useState<string | null>(null);
+  const [readingToEdit, setReadingToEdit] = useState<ChlorineReadingRow | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [editDateTime, setEditDateTime] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   const handleDelete = async () => {
     if (!readingToDelete) return;
@@ -262,6 +369,33 @@ function ChlorineReadingsTable({
     });
 
     setReadingToDelete(null);
+  };
+
+  const openEditDialog = (reading: ChlorineReadingRow) => {
+    setReadingToEdit(reading);
+    setEditValue(reading.residual_level.toString());
+    setEditDateTime(toLocalDateTimeString(reading.recorded_at));
+    setEditNotes(reading.notes ?? "");
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!readingToEdit) return;
+
+    startTransition(async () => {
+      const result = await updateChlorineReading(readingToEdit.id, {
+        locationId: readingToEdit.location_id ?? undefined,
+        residualLevel: parseFloat(editValue),
+        recordedAt: new Date(editDateTime).toISOString(),
+        notes: editNotes || undefined,
+      });
+      if (result.success) {
+        toast.success("Chlorine reading updated");
+        setReadingToEdit(null);
+      } else {
+        toast.error(result.error || "Failed to update reading");
+      }
+    });
   };
 
   if (readings.length === 0) {
@@ -302,7 +436,7 @@ function ChlorineReadingsTable({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {}}
+                    onClick={() => openEditDialog(reading)}
                     disabled={isPending}
                   >
                     <Pencil className="h-4 w-4" />
@@ -321,6 +455,59 @@ function ChlorineReadingsTable({
           ))}
         </TableBody>
       </Table>
+
+      {/* Edit Dialog */}
+      <Dialog open={readingToEdit !== null} onOpenChange={(open) => !open && setReadingToEdit(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Chlorine Reading</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-chlorine-datetime">Date & Time</Label>
+              <Input
+                id="edit-chlorine-datetime"
+                type="datetime-local"
+                value={editDateTime}
+                onChange={(e) => setEditDateTime(e.target.value)}
+                required
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-chlorine-value">Residual Level (mg/L)</Label>
+              <Input
+                id="edit-chlorine-value"
+                type="number"
+                step="0.01"
+                min="0"
+                max="10"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                required
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-chlorine-notes">Notes (optional)</Label>
+              <Textarea
+                id="edit-chlorine-notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setReadingToEdit(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isPending || !editValue || !editDateTime}>
+                {isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={readingToDelete !== null} onOpenChange={(open) => !open && setReadingToDelete(null)}>
         <AlertDialogContent>
@@ -349,6 +536,11 @@ function ReservoirReadingsTable({
 }) {
   const [isPending, startTransition] = useTransition();
   const [readingToDelete, setReadingToDelete] = useState<string | null>(null);
+  const [readingToEdit, setReadingToEdit] = useState<ReservoirReadingRow | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [editPercent, setEditPercent] = useState("");
+  const [editDateTime, setEditDateTime] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   const handleDelete = async () => {
     if (!readingToDelete) return;
@@ -363,6 +555,35 @@ function ReservoirReadingsTable({
     });
 
     setReadingToDelete(null);
+  };
+
+  const openEditDialog = (reading: ReservoirReadingRow) => {
+    setReadingToEdit(reading);
+    setEditValue(reading.level_inches.toString());
+    setEditPercent(reading.level_percent?.toString() ?? "");
+    setEditDateTime(toLocalDateTimeString(reading.recorded_at));
+    setEditNotes(reading.notes ?? "");
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!readingToEdit) return;
+
+    startTransition(async () => {
+      const result = await updateReservoirReading(readingToEdit.id, {
+        reservoirId: readingToEdit.reservoir_id,
+        levelInches: parseFloat(editValue),
+        levelPercent: editPercent ? parseFloat(editPercent) : undefined,
+        recordedAt: new Date(editDateTime).toISOString(),
+        notes: editNotes || undefined,
+      });
+      if (result.success) {
+        toast.success("Reservoir reading updated");
+        setReadingToEdit(null);
+      } else {
+        toast.error(result.error || "Failed to update reading");
+      }
+    });
   };
 
   if (readings.length === 0) {
@@ -409,7 +630,7 @@ function ReservoirReadingsTable({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {}}
+                    onClick={() => openEditDialog(reading)}
                     disabled={isPending}
                   >
                     <Pencil className="h-4 w-4" />
@@ -428,6 +649,71 @@ function ReservoirReadingsTable({
           ))}
         </TableBody>
       </Table>
+
+      {/* Edit Dialog */}
+      <Dialog open={readingToEdit !== null} onOpenChange={(open) => !open && setReadingToEdit(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Reservoir Reading</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-reservoir-datetime">Date & Time</Label>
+              <Input
+                id="edit-reservoir-datetime"
+                type="datetime-local"
+                value={editDateTime}
+                onChange={(e) => setEditDateTime(e.target.value)}
+                required
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-reservoir-value">Level (inches)</Label>
+              <Input
+                id="edit-reservoir-value"
+                type="number"
+                step="0.1"
+                min="0"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                required
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-reservoir-percent">Percent (optional)</Label>
+              <Input
+                id="edit-reservoir-percent"
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                value={editPercent}
+                onChange={(e) => setEditPercent(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-reservoir-notes">Notes (optional)</Label>
+              <Textarea
+                id="edit-reservoir-notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setReadingToEdit(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isPending || !editValue || !editDateTime}>
+                {isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={readingToDelete !== null} onOpenChange={(open) => !open && setReadingToDelete(null)}>
         <AlertDialogContent>

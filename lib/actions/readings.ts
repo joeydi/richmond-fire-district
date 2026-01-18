@@ -156,6 +156,7 @@ export interface ReadingsHistoryParams {
 
 export interface MeterReadingRow {
   id: string;
+  meter_id: string;
   reading_value: number;
   recorded_at: string;
   notes: string | null;
@@ -164,6 +165,7 @@ export interface MeterReadingRow {
 
 export interface ChlorineReadingRow {
   id: string;
+  location_id: string | null;
   residual_level: number;
   recorded_at: string;
   notes: string | null;
@@ -172,6 +174,7 @@ export interface ChlorineReadingRow {
 
 export interface ReservoirReadingRow {
   id: string;
+  reservoir_id: string;
   level_inches: number;
   level_percent: number | null;
   recorded_at: string;
@@ -187,7 +190,7 @@ export async function getMeterReadingsHistory(
 
   const { data, count, error } = await supabase
     .from("meter_readings")
-    .select("id, reading_value, recorded_at, notes, meters (name)", {
+    .select("id, meter_id, reading_value, recorded_at, notes, meters (name)", {
       count: "exact",
     })
     .order("recorded_at", { ascending: false })
@@ -200,6 +203,7 @@ export async function getMeterReadingsHistory(
 
   const readings: MeterReadingRow[] = (data ?? []).map((r: any) => ({
     id: r.id,
+    meter_id: r.meter_id,
     reading_value: r.reading_value,
     recorded_at: r.recorded_at,
     notes: r.notes,
@@ -217,7 +221,7 @@ export async function getChlorineReadingsHistory(
 
   const { data, count, error } = await supabase
     .from("chlorine_readings")
-    .select("id, residual_level, recorded_at, notes, infrastructure_points (name)", {
+    .select("id, location_id, residual_level, recorded_at, notes, infrastructure_points (name)", {
       count: "exact",
     })
     .order("recorded_at", { ascending: false })
@@ -230,6 +234,7 @@ export async function getChlorineReadingsHistory(
 
   const readings: ChlorineReadingRow[] = (data ?? []).map((r: any) => ({
     id: r.id,
+    location_id: r.location_id ?? null,
     residual_level: r.residual_level,
     recorded_at: r.recorded_at,
     notes: r.notes,
@@ -288,6 +293,7 @@ export async function getReservoirReadingsHistory(
 
     const readings: ReservoirReadingRow[] = (data as Array<{ id: string; level_inches: number; level_percent: number | null; recorded_at: string; notes: string | null; reservoir_id: string | null }>).map((r) => ({
       id: r.id,
+      reservoir_id: r.reservoir_id!,
       level_inches: r.level_inches,
       level_percent: r.level_percent,
       recorded_at: r.recorded_at,
@@ -322,7 +328,6 @@ export async function updateMeterReading(
       reading_value: parsed.data.readingValue,
       recorded_at: parsed.data.recordedAt,
       notes: parsed.data.notes || null,
-      updated_at: new Date().toISOString(),
     })
     .eq("id", id);
 
@@ -354,7 +359,6 @@ export async function updateChlorineReading(
       residual_level: parsed.data.residualLevel,
       recorded_at: parsed.data.recordedAt,
       notes: parsed.data.notes || null,
-      updated_at: new Date().toISOString(),
     })
     .eq("id", id);
 
@@ -387,7 +391,6 @@ export async function updateReservoirReading(
       level_percent: parsed.data.levelPercent || null,
       recorded_at: parsed.data.recordedAt,
       notes: parsed.data.notes || null,
-      updated_at: new Date().toISOString(),
     })
     .eq("id", id);
 
