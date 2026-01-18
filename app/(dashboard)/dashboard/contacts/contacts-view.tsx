@@ -11,6 +11,7 @@ interface ContactsViewProps {
   currentPage: number;
   pageSize: number;
   search: string;
+  typeFilter: string;
   sortBy: string;
   sortOrder: "asc" | "desc";
   canEdit: boolean;
@@ -22,6 +23,7 @@ export function ContactsView({
   currentPage,
   pageSize,
   search,
+  typeFilter,
   sortBy,
   sortOrder,
   canEdit,
@@ -36,6 +38,7 @@ export function ContactsView({
         currentPage={currentPage}
         pageSize={pageSize}
         search={search}
+        typeFilter={typeFilter}
         sortBy={sortBy}
         sortOrder={sortOrder}
         canEdit={canEdit}

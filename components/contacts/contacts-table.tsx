@@ -12,12 +12,18 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   ChevronUp,
   ChevronDown,
   Search,
-  Plus,
   Pencil,
   Trash2,
   ChevronLeft,
@@ -31,11 +37,22 @@ interface ContactsTableProps {
   currentPage: number;
   pageSize: number;
   search: string;
+  typeFilter: string;
   sortBy: string;
   sortOrder: "asc" | "desc";
   canEdit: boolean;
   onDelete?: (contact: Contact) => void;
 }
+
+const typeOptions: Array<{ value: ContactType | "all"; label: string }> = [
+  { value: "all", label: "All Types" },
+  { value: "resident", label: "Resident" },
+  { value: "business", label: "Business" },
+  { value: "contractor", label: "Contractor" },
+  { value: "utility", label: "Utility" },
+  { value: "emergency", label: "Emergency" },
+  { value: "other", label: "Other" },
+];
 
 const contactTypeLabels: Record<ContactType, string> = {
   resident: "Resident",
@@ -61,6 +78,7 @@ export function ContactsTable({
   currentPage,
   pageSize,
   search: initialSearch,
+  typeFilter,
   sortBy,
   sortOrder,
   canEdit,
@@ -91,6 +109,10 @@ export function ContactsTable({
     updateUrl({ search, page: 1 });
   };
 
+  const handleTypeChange = (value: string) => {
+    updateUrl({ type: value, page: 1 });
+  };
+
   const handleSort = (column: string) => {
     const newOrder =
       sortBy === column && sortOrder === "asc" ? "desc" : "asc";
@@ -112,8 +134,8 @@ export function ContactsTable({
 
   return (
     <div className="space-y-4">
-      {/* Search and Add */}
-      <div className="flex items-center justify-between gap-4">
+      {/* Search and Filter */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <form onSubmit={handleSearch} className="flex max-w-sm flex-1 gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -129,12 +151,19 @@ export function ContactsTable({
             Search
           </Button>
         </form>
-        {canEdit && (
-          <Button onClick={() => router.push("/dashboard/contacts/new")}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Contact
-          </Button>
-        )}
+
+        <Select value={typeFilter || "all"} onValueChange={handleTypeChange}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder="Filter by type" />
+          </SelectTrigger>
+          <SelectContent>
+            {typeOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Table */}
@@ -169,8 +198,8 @@ export function ContactsTable({
                   colSpan={canEdit ? 6 : 5}
                   className="h-24 text-center text-slate-500"
                 >
-                  {initialSearch
-                    ? "No contacts found matching your search."
+                  {initialSearch || typeFilter !== "all"
+                    ? "No contacts found matching your filters."
                     : "No contacts yet. Add your first contact to get started."}
                 </TableCell>
               </TableRow>

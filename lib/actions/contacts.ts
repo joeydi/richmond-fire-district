@@ -60,6 +60,7 @@ export type ContactInput = z.infer<typeof contactSchema>;
 
 interface GetContactsOptions {
   search?: string;
+  type?: ContactType | "all";
   sortBy?: keyof Contact;
   sortOrder?: "asc" | "desc";
   limit?: number;
@@ -75,6 +76,7 @@ export async function getContacts(options: GetContactsOptions = {}): Promise<{
 }> {
   const {
     search,
+    type,
     sortBy = "name",
     sortOrder = "asc",
     limit = 50,
@@ -92,6 +94,11 @@ export async function getContacts(options: GetContactsOptions = {}): Promise<{
     query = query.or(
       `name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,address.ilike.%${search}%`
     );
+  }
+
+  // Apply type filter
+  if (type && type !== "all") {
+    query = query.eq("contact_type", type);
   }
 
   // Apply sorting

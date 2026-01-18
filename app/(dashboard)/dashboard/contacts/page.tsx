@@ -1,10 +1,14 @@
-import { getContacts, type Contact } from "@/lib/actions/contacts";
+import Link from "next/link";
+import { getContacts, type Contact, type ContactType } from "@/lib/actions/contacts";
 import { canEdit } from "@/lib/auth/roles";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 import { ContactsView } from "./contacts-view";
 
 interface ContactsPageProps {
   searchParams: Promise<{
     search?: string;
+    type?: string;
     sortBy?: string;
     sortOrder?: string;
     page?: string;
@@ -14,6 +18,7 @@ interface ContactsPageProps {
 export default async function ContactsPage({ searchParams }: ContactsPageProps) {
   const params = await searchParams;
   const search = params.search || "";
+  const typeFilter = params.type || "all";
   const sortBy = (params.sortBy as keyof Contact) || "name";
   const sortOrder = (params.sortOrder as "asc" | "desc") || "asc";
   const page = parseInt(params.page || "1", 10);
@@ -22,6 +27,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
   const [{ data: contacts, count }, userCanEdit] = await Promise.all([
     getContacts({
       search,
+      type: typeFilter as ContactType | "all",
       sortBy,
       sortOrder,
       limit: pageSize,
@@ -32,11 +38,21 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Contacts</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Manage contact directory for the water system
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Contacts</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Manage contact directory for the water system
+          </p>
+        </div>
+        {userCanEdit && (
+          <Link href="/dashboard/contacts/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Contact
+            </Button>
+          </Link>
+        )}
       </div>
       <ContactsView
         contacts={contacts}
@@ -44,6 +60,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
         currentPage={page}
         pageSize={pageSize}
         search={search}
+        typeFilter={typeFilter}
         sortBy={sortBy}
         sortOrder={sortOrder}
         canEdit={userCanEdit}
