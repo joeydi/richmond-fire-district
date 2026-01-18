@@ -163,19 +163,27 @@ export async function getMonthlyReportData(
   const hasMeterData = meterAverages.length > 0;
   const hasChlorineData = chlorineAverages.length > 0;
 
+  // Get today's date for comparison (no estimations for future dates)
+  const today = format(new Date(), "yyyy-MM-dd");
+
   // Build the days array
   const days: ReportDayData[] = allDates.map((date, index) => {
     const meterData = interpolatedMeter[index];
     const chlorineData = interpolatedChlorine[index];
+    const isFutureDate = date > today;
+
+    // For future dates, only show actual data (not interpolated)
+    const showMeterData = hasMeterData && (!isFutureDate || !meterData.isInterpolated);
+    const showChlorineData = hasChlorineData && (!isFutureDate || !chlorineData.isInterpolated);
 
     return {
       date,
-      meterAverage: hasMeterData ? Math.round(meterData.value) : null,
-      chlorineAverage: hasChlorineData
+      meterAverage: showMeterData ? Math.round(meterData.value) : null,
+      chlorineAverage: showChlorineData
         ? Math.round(chlorineData.value * 100) / 100
         : null,
-      isMeterInterpolated: hasMeterData ? meterData.isInterpolated : false,
-      isChlorineInterpolated: hasChlorineData
+      isMeterInterpolated: showMeterData ? meterData.isInterpolated : false,
+      isChlorineInterpolated: showChlorineData
         ? chlorineData.isInterpolated
         : false,
     };
