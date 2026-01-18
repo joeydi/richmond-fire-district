@@ -1,7 +1,7 @@
 import { requireAdmin } from "@/lib/auth/roles";
 import { getUsers } from "@/lib/actions/users";
 import { UsersTable } from "./users-table";
-import { InviteUserDialog } from "./invite-user-dialog";
+import { CreateUserDialog } from "./create-user-dialog";
 
 export default async function UsersPage() {
   await requireAdmin();
@@ -16,7 +16,7 @@ export default async function UsersPage() {
             Manage users and their roles
           </p>
         </div>
-        <InviteUserDialog />
+        <CreateUserDialog />
       </div>
 
       <UsersTable users={users} />

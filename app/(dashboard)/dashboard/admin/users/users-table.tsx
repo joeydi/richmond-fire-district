@@ -12,7 +12,9 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Pencil } from "lucide-react";
+import { Mail, Pencil } from "lucide-react";
+import { sendInviteEmail } from "@/lib/actions/users";
+import { toast } from "sonner";
 import type { Profile } from "@/lib/types/database";
 
 interface UsersTableProps {
@@ -26,6 +28,24 @@ const roleBadgeVariant = {
 } as const;
 
 export function UsersTable({ users }: UsersTableProps) {
+  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
+
+  const handleSendInvite = async (userId: string) => {
+    setSendingInvite(userId);
+    try {
+      const result = await sendInviteEmail(userId);
+      if (result.success) {
+        toast.success("Invite email sent successfully");
+      } else {
+        toast.error(result.error || "Failed to send invite");
+      }
+    } catch {
+      toast.error("An unexpected error occurred");
+    } finally {
+      setSendingInvite(null);
+    }
+  };
+
   return (
     <div className="rounded-md border bg-white">
       <Table>
@@ -61,12 +81,24 @@ export function UsersTable({ users }: UsersTableProps) {
                   {new Date(user.created_at).toLocaleDateString()}
                 </TableCell>
                 <TableCell>
-                  <Button variant="ghost" size="icon" asChild>
-                    <Link href={`/dashboard/admin/users/${user.id}/edit`}>
-                      <Pencil className="h-4 w-4" />
-                      <span className="sr-only">Edit user</span>
-                    </Link>
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleSendInvite(user.id)}
+                      disabled={sendingInvite === user.id}
+                      title="Send invite email"
+                    >
+                      <Mail className="h-4 w-4" />
+                      <span className="sr-only">Send invite</span>
+                    </Button>
+                    <Button variant="ghost" size="icon" asChild>
+                      <Link href={`/dashboard/admin/users/${user.id}/edit`}>
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Edit user</span>
+                      </Link>
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))

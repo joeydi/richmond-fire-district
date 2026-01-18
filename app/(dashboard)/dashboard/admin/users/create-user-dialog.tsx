@@ -20,12 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { inviteUser } from "@/lib/actions/users";
+import { createUser } from "@/lib/actions/users";
 import { toast } from "sonner";
 import { UserPlus } from "lucide-react";
 import type { UserRole } from "@/lib/types/database";
 
-export function InviteUserDialog() {
+export function CreateUserDialog() {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("member");
@@ -36,14 +36,14 @@ export function InviteUserDialog() {
     setLoading(true);
 
     try {
-      const result = await inviteUser(email, role);
+      const result = await createUser(email, role);
       if (result.success) {
-        toast.success("Invitation sent successfully");
+        toast.success("User created successfully");
         setOpen(false);
         setEmail("");
         setRole("member");
       } else {
-        toast.error(result.error || "Failed to send invitation");
+        toast.error(result.error || "Failed to create user");
       }
     } catch {
       toast.error("An unexpected error occurred");
@@ -57,15 +57,16 @@ export function InviteUserDialog() {
       <DialogTrigger asChild>
         <Button>
           <UserPlus className="mr-2 h-4 w-4" />
-          Invite User
+          Create User
         </Button>
       </DialogTrigger>
       <DialogContent>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Invite User</DialogTitle>
+            <DialogTitle>Create User</DialogTitle>
             <DialogDescription>
-              Send an invitation email to a new user.
+              Create a new user account. You can send them an invite email later
+              from the user list.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -109,7 +110,7 @@ export function InviteUserDialog() {
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Sending..." : "Send Invitation"}
+              {loading ? "Creating..." : "Create User"}
             </Button>
           </DialogFooter>
         </form>

@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/roles";
 import { revalidatePath } from "next/cache";
 import type { UserRole, Profile } from "@/lib/types/database";
@@ -57,17 +57,19 @@ export async function updateUserRole(
   return { success: true };
 }
 
-export async function inviteUser(
+export async function createUser(
   email: string,
   role: UserRole = "member"
 ): Promise<{ success: boolean; error?: string }> {
   await requireAdmin();
 
-  const supabase = await createClient();
+  const adminClient = createAdminClient();
 
-  // Invite user via Supabase Auth
-  const { error } = await supabase.auth.admin.inviteUserByEmail(email, {
-    data: { role },
+  // Create user via Supabase Auth without sending invite email
+  const { error } = await adminClient.auth.admin.createUser({
+    email,
+    email_confirm: true,
+    user_metadata: { role },
   });
 
   if (error) {
@@ -75,5 +77,37 @@ export async function inviteUser(
   }
 
   revalidatePath("/dashboard/admin/users");
+  return { success: true };
+}
+
+export async function sendInviteEmail(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  await requireAdmin();
+
+  const supabase = await createClient();
+  const adminClient = createAdminClient();
+
+  // Get user email first
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .single();
+
+  if (profileError || !profile?.email) {
+    return { success: false, error: "User not found" };
+  }
+
+  // Generate a password reset link which serves as the invite
+  const { error } = await adminClient.auth.admin.generateLink({
+    type: "recovery",
+    email: profile.email,
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
   return { success: true };
 }
