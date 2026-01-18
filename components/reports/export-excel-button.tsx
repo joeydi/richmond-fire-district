@@ -8,16 +8,27 @@ import type { ReportDayData } from "@/lib/actions/reports";
 interface ExportExcelButtonProps {
   days: ReportDayData[];
   month: string;
+  carryTotal: number | null;
 }
 
-export function ExportExcelButton({ days, month }: ExportExcelButtonProps) {
+export function ExportExcelButton({ days, month, carryTotal }: ExportExcelButtonProps) {
   const handleExport = () => {
-    // Prepare data for Excel
-    const rows = days.map((day) => ({
+    // Prepare data for Excel with Carry Total row first
+    const carryTotalRow = {
+      Date: "Carry Total",
+      "Meter Reading (gal)": carryTotal ?? "",
+      "Daily Usage (gal)": "",
+      "Chlorine Level (mg/L)": "",
+    };
+
+    const dayRows = days.map((day) => ({
       Date: day.date,
       "Meter Reading (gal)": day.meterAverage ?? "",
+      "Daily Usage (gal)": day.dailyUsage ?? "",
       "Chlorine Level (mg/L)": day.chlorineAverage ?? "",
     }));
+
+    const rows = [carryTotalRow, ...dayRows];
 
     // Create workbook and worksheet
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -28,6 +39,7 @@ export function ExportExcelButton({ days, month }: ExportExcelButtonProps) {
     ws["!cols"] = [
       { wch: 12 }, // Date
       { wch: 18 }, // Meter Reading
+      { wch: 16 }, // Daily Usage
       { wch: 20 }, // Chlorine Level
     ];
 

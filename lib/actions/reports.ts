@@ -14,8 +14,10 @@ import {
 export interface ReportDayData {
   date: string; // YYYY-MM-DD
   meterAverage: number | null;
+  dailyUsage: number | null;
   chlorineAverage: number | null;
   isMeterInterpolated: boolean;
+  isDailyUsageInterpolated: boolean;
   isChlorineInterpolated: boolean;
 }
 
@@ -24,6 +26,7 @@ export interface MonthlyReportData {
   days: ReportDayData[];
   meters: { id: string; name: string }[];
   availableMonths: string[];
+  carryTotal: number | null; // Last meter reading from previous month
 }
 
 interface GetMonthlyReportParams {
@@ -94,6 +97,7 @@ export async function getMonthlyReportData(
   // Calculate date range for the month
   const monthStart = startOfMonth(parseISO(`${month}-01`));
   const nextMonth = format(addMonths(monthStart, 1), "yyyy-MM");
+  const prevMonth = format(addMonths(monthStart, -1), "yyyy-MM");
 
   // Fetch meter readings for the month (filtered by meterId)
   const { data: meterReadings } = await supabase
@@ -111,6 +115,49 @@ export async function getMonthlyReportData(
     .gte("recorded_at", `${month}-01T00:00:00`)
     .lt("recorded_at", `${nextMonth}-01T00:00:00`)
     .order("recorded_at");
+
+  // Fetch previous month's meter readings to calculate carry total with same interpolation logic
+  const { data: prevMeterReadings } = await supabase
+    .from("meter_readings")
+    .select("id, reading_value, recorded_at")
+    .eq("meter_id", meterId)
+    .gte("recorded_at", `${prevMonth}-01T00:00:00`)
+    .lt("recorded_at", `${month}-01T00:00:00`)
+    .order("recorded_at");
+
+  // Calculate carry total using same interpolation logic as report table
+  let carryTotal: number | null = null;
+  if (prevMeterReadings && prevMeterReadings.length > 0) {
+    // Group previous month readings by date and calculate daily averages
+    const prevMeterByDate = new Map<string, number[]>();
+    prevMeterReadings.forEach((r) => {
+      const date = format(parseISO(r.recorded_at), "yyyy-MM-dd");
+      if (!prevMeterByDate.has(date)) {
+        prevMeterByDate.set(date, []);
+      }
+      prevMeterByDate.get(date)!.push(r.reading_value);
+    });
+
+    const prevMeterAverages: ReadingPoint[] = [];
+    prevMeterByDate.forEach((values, date) => {
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      prevMeterAverages.push({ date, value: avg });
+    });
+
+    // Get all days in previous month and interpolate
+    const prevMonthDates = getDaysInMonth(prevMonth);
+    const interpolatedPrevMeter = interpolateMissingDays(
+      prevMeterAverages,
+      prevMonthDates,
+      true // Add variation for meter readings
+    );
+
+    // Get the last day's value
+    const lastDayData = interpolatedPrevMeter[interpolatedPrevMeter.length - 1];
+    if (lastDayData) {
+      carryTotal = Math.round(lastDayData.value);
+    }
+  }
 
   // Group readings by date and calculate daily averages
   const meterByDate = new Map<string, number[]>();
@@ -166,7 +213,7 @@ export async function getMonthlyReportData(
   // Get today's date for comparison (no estimations for future dates)
   const today = format(new Date(), "yyyy-MM-dd");
 
-  // Build the days array
+  // Build the days array with daily usage calculation
   const days: ReportDayData[] = allDates.map((date, index) => {
     const meterData = interpolatedMeter[index];
     const chlorineData = interpolatedChlorine[index];
@@ -176,13 +223,42 @@ export async function getMonthlyReportData(
     const showMeterData = hasMeterData && (!isFutureDate || !meterData.isInterpolated);
     const showChlorineData = hasChlorineData && (!isFutureDate || !chlorineData.isInterpolated);
 
+    // Calculate daily usage (difference from previous day or carry total)
+    let dailyUsage: number | null = null;
+    let isDailyUsageInterpolated = false;
+
+    if (showMeterData) {
+      if (index === 0) {
+        // First day: use carry total from previous month
+        if (carryTotal !== null) {
+          dailyUsage = Math.round(meterData.value) - carryTotal;
+          // First day usage is interpolated if current reading is interpolated
+          // (carry total itself may be interpolated, but we treat it as the baseline)
+          isDailyUsageInterpolated = meterData.isInterpolated;
+        }
+      } else {
+        // Other days: use previous day's reading
+        const prevMeterData = interpolatedMeter[index - 1];
+        const prevDate = allDates[index - 1];
+        const prevIsFutureDate = prevDate > today;
+        const showPrevMeterData = hasMeterData && (!prevIsFutureDate || !prevMeterData.isInterpolated);
+
+        if (showPrevMeterData) {
+          dailyUsage = Math.round(meterData.value - prevMeterData.value);
+          isDailyUsageInterpolated = meterData.isInterpolated || prevMeterData.isInterpolated;
+        }
+      }
+    }
+
     return {
       date,
       meterAverage: showMeterData ? Math.round(meterData.value) : null,
+      dailyUsage,
       chlorineAverage: showChlorineData
         ? Math.round(chlorineData.value * 100) / 100
         : null,
       isMeterInterpolated: showMeterData ? meterData.isInterpolated : false,
+      isDailyUsageInterpolated,
       isChlorineInterpolated: showChlorineData
         ? chlorineData.isInterpolated
         : false,
@@ -200,6 +276,7 @@ export async function getMonthlyReportData(
     days,
     meters,
     availableMonths,
+    carryTotal,
   };
 }
 

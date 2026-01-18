@@ -69,7 +69,7 @@ export function ReportsView({
             </SelectContent>
           </Select>
 
-          <ExportExcelButton days={data.days} month={month} />
+          <ExportExcelButton days={data.days} month={month} carryTotal={data.carryTotal} />
         </div>
       </div>
 
@@ -78,6 +78,7 @@ export function ReportsView({
         days={data.days}
         canEdit={canEdit}
         meterId={meterId}
+        carryTotal={data.carryTotal}
       />
     </div>
   );

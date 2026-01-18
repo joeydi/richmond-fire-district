@@ -17,12 +17,14 @@ interface ReportsTableProps {
   days: ReportDayData[];
   canEdit: boolean;
   meterId: string;
+  carryTotal: number | null;
 }
 
 export function ReportsTable({
   days,
   canEdit,
   meterId,
+  carryTotal,
 }: ReportsTableProps) {
   const hasAnyMeterData = days.some((d) => d.meterAverage !== null);
   const hasAnyChlorineData = days.some((d) => d.chlorineAverage !== null);
@@ -43,10 +45,29 @@ export function ReportsTable({
           <TableRow>
             <TableHead className="w-32">Date</TableHead>
             <TableHead className="text-right">Meter Reading (gal)</TableHead>
+            <TableHead className="text-right">Daily Usage (gal)</TableHead>
             <TableHead className="text-right">Chlorine Level (mg/L)</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
+          {/* Carry Total row */}
+          <TableRow className="bg-slate-50 font-medium">
+            <TableCell>Carry Total</TableCell>
+            <TableCell className="text-right">
+              {carryTotal !== null ? (
+                <span>{carryTotal.toLocaleString()}</span>
+              ) : (
+                <span className="text-slate-400">&mdash;</span>
+              )}
+            </TableCell>
+            <TableCell className="text-right">
+              <span className="text-slate-400">&mdash;</span>
+            </TableCell>
+            <TableCell className="text-right">
+              <span className="text-slate-400">&mdash;</span>
+            </TableCell>
+          </TableRow>
+
           {days.map((day) => (
             <TableRow key={day.date}>
               <TableCell className="font-medium">{day.date}</TableCell>
@@ -79,6 +100,32 @@ export function ReportsTable({
                             />
                           )}
                         </>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-slate-400">&mdash;</span>
+                  )}
+                </div>
+              </TableCell>
+
+              {/* Daily usage cell */}
+              <TableCell
+                className={cn(
+                  "text-right",
+                  day.isDailyUsageInterpolated && day.dailyUsage !== null && "bg-amber-50"
+                )}
+              >
+                <div className="flex items-center justify-end gap-2">
+                  {day.dailyUsage !== null ? (
+                    <>
+                      <span>{day.dailyUsage.toLocaleString()}</span>
+                      {day.isDailyUsageInterpolated && (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-300 bg-amber-100 text-amber-800 text-xs"
+                        >
+                          Est.
+                        </Badge>
                       )}
                     </>
                   ) : (
