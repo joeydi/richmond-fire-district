@@ -16,28 +16,25 @@ export default async function LogPage({ searchParams }: LogPageProps) {
   const params = await searchParams;
   const search = params.search || "";
   const page = parseInt(params.page || "1", 10);
-  const pageSize = 20;
+  const pageSize = 100;
 
-  const [{ data: posts, count }, profile, userIsAdmin, userCanEdit] =
-    await Promise.all([
-      getLogPosts({
-        search,
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-      }),
-      getUserProfile(),
-      isAdmin(),
-      canEdit(),
-    ]);
+  const [{ data: posts, count }, profile, userIsAdmin, userCanEdit] = await Promise.all([
+    getLogPosts({
+      search,
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    }),
+    getUserProfile(),
+    isAdmin(),
+    canEdit(),
+  ]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Log</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Updates and notes about the water system
-          </p>
+          <p className="mt-1 text-sm text-slate-600">Updates and notes about the water system</p>
         </div>
         {userCanEdit && (
           <Link href="/dashboard/log/new">

@@ -84,18 +84,12 @@ export function LogPostsList({
         <div className="flex flex-col items-center justify-center py-12 text-slate-400">
           <FileText className="h-12 w-12 mb-4" />
           <p className="text-lg font-medium text-slate-600">
-            {initialSearch
-              ? "No posts found matching your search."
-              : "No posts yet."}
+            {initialSearch ? "No posts found matching your search." : "No posts yet."}
           </p>
-          {!initialSearch && (
-            <p className="text-sm mt-1">
-              Create your first post to get started.
-            </p>
-          )}
+          {!initialSearch && <p className="text-sm mt-1">Create your first post to get started.</p>}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 xl:space-y-8">
           {posts.map((post) => (
             <LogPost
               key={post.id}
@@ -112,8 +106,8 @@ export function LogPostsList({
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-4 border-t">
           <p className="text-sm text-slate-600">
-            Showing {(currentPage - 1) * pageSize + 1} to{" "}
-            {Math.min(currentPage * pageSize, totalCount)} of {totalCount} posts
+            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount}{" "}
+            posts
           </p>
           <div className="flex gap-2">
             <Button
