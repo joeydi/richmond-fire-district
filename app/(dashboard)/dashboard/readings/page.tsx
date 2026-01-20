@@ -91,7 +91,7 @@ export default async function ReadingsPage({ searchParams }: ReadingsPageProps) 
 }
 
 async function ReadingsHistorySection({ page }: { page: number }) {
-  const pageSize = 20;
+  const pageSize = 100;
   const offset = (page - 1) * pageSize;
 
   const [meterData, chlorineData, reservoirData] = await Promise.all([
