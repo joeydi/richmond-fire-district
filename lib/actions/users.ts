@@ -97,7 +97,6 @@ export async function sendInviteEmail(
   await requireAdmin();
 
   const supabase = await createClient();
-  const adminClient = createAdminClient();
 
   // Get user email first
   const { data: profile, error: profileError } = await supabase
@@ -110,10 +109,12 @@ export async function sendInviteEmail(
     return { success: false, error: "User not found" };
   }
 
-  // Generate a password reset link which serves as the invite
-  const { error } = await adminClient.auth.admin.generateLink({
-    type: "recovery",
+  // Send a "magic link" sign in email
+  const { error } = await supabase.auth.signInWithOtp({
     email: profile.email,
+    options: {
+      shouldCreateUser: false,
+    },
   });
 
   if (error) {
