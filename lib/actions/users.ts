@@ -114,6 +114,7 @@ export async function sendInviteEmail(
     email: profile.email,
     options: {
       shouldCreateUser: false,
+      emailRedirectTo: "https://richmond-fire-district.vercel.app/dashboard",
     },
   });
 
