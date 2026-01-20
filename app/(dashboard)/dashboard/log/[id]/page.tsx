@@ -28,7 +28,7 @@ export default async function LogPostPage({ params }: LogPostPageProps) {
   const canEdit = userIsAdmin || post.author_id === profile?.id;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div>
         <Link href="/dashboard/log">
           <Button variant="ghost" size="sm" className="mb-4">
