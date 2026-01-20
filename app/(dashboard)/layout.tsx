@@ -1,4 +1,4 @@
-import { getUserProfile } from "@/lib/auth/roles";
+import { isAdmin } from "@/lib/auth/roles";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 
 export default async function DashboardLayout({
@@ -6,8 +6,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const profile = await getUserProfile();
-  const isAdmin = profile?.role === "admin";
+  const userIsAdmin = await isAdmin();
 
-  return <DashboardShell isAdmin={isAdmin}>{children}</DashboardShell>;
+  return <DashboardShell isAdmin={userIsAdmin}>{children}</DashboardShell>;
 }
