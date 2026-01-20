@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
@@ -30,8 +31,14 @@ const typeBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
 export function RecentReadings({ readings }: RecentReadingsProps) {
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg font-medium">Recent Readings</CardTitle>
+        <Link
+          href="/dashboard/readings"
+          className="text-sm text-blue-600 hover:underline"
+        >
+          View All
+        </Link>
       </CardHeader>
       <CardContent>
         {readings.length === 0 ? (

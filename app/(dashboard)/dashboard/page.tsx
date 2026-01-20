@@ -2,11 +2,13 @@ import { Suspense } from "react";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { WaterUsageChart } from "@/components/dashboard/water-usage-chart";
 import { RecentReadings } from "@/components/dashboard/recent-readings";
+import { RecentPosts } from "@/components/dashboard/recent-posts";
 import {
   getDashboardStatsFallback,
   getRecentReadingsFallback,
   getDailyUsage,
 } from "@/lib/actions/dashboard";
+import { getLogPosts } from "@/lib/actions/log";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default async function DashboardPage() {
@@ -19,21 +21,21 @@ export default async function DashboardPage() {
         </p>
       </div>
 
+      <Suspense fallback={<ChartSkeleton />}>
+        <ChartSection />
+      </Suspense>
+
       <Suspense fallback={<StatsCardsSkeleton />}>
         <StatsCardsSection />
       </Suspense>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense fallback={<ChartSkeleton />}>
-            <ChartSection />
-          </Suspense>
-        </div>
-        <div>
-          <Suspense fallback={<RecentReadingsSkeleton />}>
-            <RecentReadingsSection />
-          </Suspense>
-        </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Suspense fallback={<RecentReadingsSkeleton />}>
+          <RecentReadingsSection />
+        </Suspense>
+        <Suspense fallback={<RecentPostsSkeleton />}>
+          <RecentPostsSection />
+        </Suspense>
       </div>
     </div>
   );
@@ -111,6 +113,11 @@ async function RecentReadingsSection() {
   return <RecentReadings readings={allReadings} />;
 }
 
+async function RecentPostsSection() {
+  const { data } = await getLogPosts({ limit: 5 });
+  return <RecentPosts posts={data} />;
+}
+
 function StatsCardsSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -126,5 +133,9 @@ function ChartSkeleton() {
 }
 
 function RecentReadingsSkeleton() {
+  return <Skeleton className="h-[380px] rounded-lg" />;
+}
+
+function RecentPostsSkeleton() {
   return <Skeleton className="h-[380px] rounded-lg" />;
 }
