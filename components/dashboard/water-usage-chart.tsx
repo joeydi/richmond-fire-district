@@ -179,11 +179,39 @@ export function WaterUsageChart({
   };
 
   const handleRangeChange = (value: string) => {
-    setRange(value as DateRange);
-    if (value !== "custom") {
+    if (value === "custom" && range !== "custom") {
+      // Pre-populate custom inputs with current preset dates
+      const now = new Date();
+      let start: Date;
+      const end = now;
+
+      switch (range) {
+        case "7d":
+          start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case "30d":
+          start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case "90d":
+          start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+          break;
+        case "year":
+          start = new Date(now.getFullYear(), 0, 1);
+          break;
+        case "all":
+          start = earliestDate ? parseISO(earliestDate) : new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
+
+      setCustomStart(format(start, "yyyy-MM-dd"));
+      setCustomEnd(format(end, "yyyy-MM-dd"));
+    } else if (value !== "custom") {
       setCustomStart("");
       setCustomEnd("");
     }
+    setRange(value as DateRange);
   };
 
   return (
