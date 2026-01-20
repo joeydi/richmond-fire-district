@@ -25,12 +25,6 @@ export default async function NewLogPostPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">New Post</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Create a new update about the water system
-        </p>
-      </div>
       <div className="rounded-lg border bg-white p-6">
         <LogPostForm
           users={users}

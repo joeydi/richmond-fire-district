@@ -22,12 +22,6 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   if (!meterId) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Monthly readings with daily breakdown and interpolation
-          </p>
-        </div>
         <div className="rounded-lg border bg-white p-8 text-center text-slate-500">
           No meters configured. Add a meter to start generating reports.
         </div>
@@ -45,12 +39,6 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Monthly readings with daily breakdown and interpolation
-        </p>
-      </div>
       <ReportsView
         data={reportData}
         month={month}

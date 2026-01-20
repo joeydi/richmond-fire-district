@@ -26,12 +26,6 @@ export default async function EditContactPage({ params }: EditContactPageProps) 
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Edit Contact</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Update contact information for {contact.name}
-        </p>
-      </div>
       <div className="rounded-lg border bg-white p-6">
         <ContactForm contact={contact} contactTypes={contactTypes} />
       </div>

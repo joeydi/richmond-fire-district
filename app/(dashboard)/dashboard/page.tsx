@@ -15,13 +15,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default async function DashboardPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Water system overview and recent activity
-        </p>
-      </div>
-
       <Suspense fallback={<ChartSkeleton />}>
         <ChartSection />
       </Suspense>

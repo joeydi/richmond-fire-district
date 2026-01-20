@@ -46,22 +46,16 @@ export default async function ReadingsPage({ searchParams }: ReadingsPageProps) 
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Readings</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Select a reading type to record
-          </p>
-        </div>
-        {canEdit && (
+      {canEdit && (
+        <div className="flex justify-end">
           <Button asChild variant="outline">
             <Link href="/dashboard/readings/import">
               <Upload className="mr-2 h-4 w-4" />
               Import CSV
             </Link>
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {readingTypes.map((type) => (

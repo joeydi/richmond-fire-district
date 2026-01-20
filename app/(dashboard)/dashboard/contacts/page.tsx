@@ -38,22 +38,16 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Contacts</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Manage contact directory for the water system
-          </p>
-        </div>
-        {userCanEdit && (
+      {userCanEdit && (
+        <div className="flex justify-end">
           <Link href="/dashboard/contacts/new">
             <Button>
               <Plus className="mr-2 h-4 w-4" />
               Add Contact
             </Button>
           </Link>
-        )}
-      </div>
+        </div>
+      )}
       <ContactsView
         contacts={contacts}
         totalCount={count}

@@ -9,13 +9,7 @@ export default async function MapPage() {
   ]);
 
   return (
-    <div className="flex h-full flex-col space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">System Map</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Water system infrastructure overview
-        </p>
-      </div>
+    <div className="flex h-full flex-col">
       <div className="relative min-h-0 flex-1">
         <MapView
           infrastructurePoints={infrastructurePoints}
