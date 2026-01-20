@@ -32,15 +32,27 @@ export interface RecentReading {
 }
 
 export async function getDailyUsage(
-  startDate: Date,
-  endDate: Date
+  startDate: Date | string,
+  endDate: Date | string
 ): Promise<DailyUsage[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase.rpc("get_daily_usage", {
-    start_date: startDate.toISOString().split("T")[0],
-    end_date: endDate.toISOString().split("T")[0],
-  });
+  // Convert to ISO date string format (YYYY-MM-DD)
+  const startStr =
+    typeof startDate === "string"
+      ? startDate
+      : startDate.toISOString().split("T")[0];
+  const endStr =
+    typeof endDate === "string"
+      ? endDate
+      : endDate.toISOString().split("T")[0];
+
+  const { data, error } = await supabase
+    .rpc("get_daily_usage", {
+      start_date: startStr,
+      end_date: endStr,
+    })
+    .limit(10000); // Override Supabase's default 1000 row limit
 
   if (error) {
     console.error("Error fetching daily usage:", error);
@@ -48,6 +60,26 @@ export async function getDailyUsage(
   }
 
   return data ?? [];
+}
+
+export async function getEarliestReadingDate(): Promise<string> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("meter_readings")
+    .select("recorded_at")
+    .order("recorded_at", { ascending: true })
+    .limit(1);
+
+  if (!error && data && data.length > 0 && data[0].recorded_at) {
+    // Return ISO date string (YYYY-MM-DD) for reliable serialization
+    return new Date(data[0].recorded_at).toISOString().split("T")[0];
+  }
+
+  // Fallback to 1 year ago if no readings found or query fails
+  const fallback = new Date();
+  fallback.setFullYear(fallback.getFullYear() - 1);
+  return fallback.toISOString().split("T")[0];
 }
 
 export async function getMonthlyUsage(year: number): Promise<MonthlyUsage[]> {

@@ -29,13 +29,15 @@ interface UsageData {
 interface WaterUsageChartProps {
   data: UsageData[];
   title?: string;
+  earliestDate?: string;
 }
 
-type DateRange = "7d" | "30d" | "90d" | "year" | "custom";
+type DateRange = "7d" | "30d" | "90d" | "year" | "all" | "custom";
 
 export function WaterUsageChart({
   data,
   title = "Water Usage",
+  earliestDate,
 }: WaterUsageChartProps) {
   const [range, setRange] = useState<DateRange>("30d");
   const [customStart, setCustomStart] = useState<string>("");
@@ -45,7 +47,8 @@ export function WaterUsageChart({
     data,
     range,
     customStart,
-    customEnd
+    customEnd,
+    earliestDate
   );
 
   // Calculate daily usage rate (difference between consecutive readings)
@@ -197,6 +200,7 @@ export function WaterUsageChart({
               <SelectItem value="30d">Last 30 days</SelectItem>
               <SelectItem value="90d">Last 90 days</SelectItem>
               <SelectItem value="year">This year</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
               <SelectItem value="custom">Custom range</SelectItem>
             </SelectContent>
           </Select>
@@ -259,11 +263,15 @@ function filterDataByRange(
   data: UsageData[],
   range: DateRange,
   customStart?: string,
-  customEnd?: string
+  customEnd?: string,
+  earliestDate?: string
 ): FilterResult {
   const now = new Date();
   let cutoffStart: Date;
   let cutoffEnd: Date = now;
+
+  // Helper to format date as YYYY-MM-DD in local time
+  const toDateString = (date: Date): string => format(date, "yyyy-MM-dd");
 
   switch (range) {
     case "7d":
@@ -277,6 +285,17 @@ function filterDataByRange(
       break;
     case "year":
       cutoffStart = new Date(now.getFullYear(), 0, 1);
+      break;
+    case "all":
+      // Use earliest date from data, or fall back to 1 year ago
+      if (earliestDate) {
+        cutoffStart = parseISO(earliestDate);
+      } else if (data.length > 0) {
+        const dates = data.map((d) => new Date(d.date).getTime());
+        cutoffStart = new Date(Math.min(...dates));
+      } else {
+        cutoffStart = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+      }
       break;
     case "custom":
       if (!customStart || !customEnd) {
@@ -292,9 +311,13 @@ function filterDataByRange(
       cutoffStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   }
 
+  // Compare as date strings (YYYY-MM-DD) to avoid timezone issues
+  const cutoffStartStr = toDateString(cutoffStart);
+  const cutoffEndStr = toDateString(cutoffEnd);
+
   const filteredData = data.filter((d) => {
-    const date = new Date(d.date);
-    return date >= cutoffStart && date <= cutoffEnd;
+    // d.date is already in YYYY-MM-DD format
+    return d.date >= cutoffStartStr && d.date <= cutoffEndStr;
   });
 
   return {

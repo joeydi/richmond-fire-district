@@ -7,6 +7,7 @@ import {
   getDashboardStatsFallback,
   getRecentReadingsFallback,
   getDailyUsage,
+  getEarliestReadingDate,
 } from "@/lib/actions/dashboard";
 import { getLogPosts } from "@/lib/actions/log";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -57,12 +58,11 @@ async function StatsCardsSection() {
 }
 
 async function ChartSection() {
-  // Get daily usage data for the past year to support all date range options
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setFullYear(startDate.getFullYear() - 1);
+  // Get the earliest reading date and fetch all available data
+  const earliestDate = await getEarliestReadingDate();
+  const endDate = new Date().toISOString().split("T")[0];
 
-  const data = await getDailyUsage(startDate, endDate);
+  const data = await getDailyUsage(earliestDate, endDate);
 
   // Convert data for the chart
   const chartData = data.map((item) => ({
@@ -71,7 +71,13 @@ async function ChartSection() {
     reading_count: Number(item.reading_count),
   }));
 
-  return <WaterUsageChart data={chartData} title="Water Production" />;
+  return (
+    <WaterUsageChart
+      data={chartData}
+      title="Water Production"
+      earliestDate={earliestDate}
+    />
+  );
 }
 
 async function RecentReadingsSection() {
