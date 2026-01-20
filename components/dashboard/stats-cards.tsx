@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Droplets, FlaskConical, Waves, Activity } from "lucide-react";
+import { Droplets, FlaskConical, Waves, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDistanceToNowStrict } from "date-fns";
 
 interface StatCardProps {
   title: string;
@@ -58,7 +59,7 @@ function StatCard({
 
 interface StatsCardsProps {
   stats: {
-    todayReadings: number;
+    latestReadingAt: string | null;
     monthReadings: number;
     latestChlorine: number | null;
     reservoirLevel: number | null;
@@ -72,10 +73,16 @@ export function StatsCards({ stats }: StatsCardsProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
-        title="Today's Readings"
-        value={stats.todayReadings}
-        icon={<Activity className="h-4 w-4" />}
-        description="Readings recorded today"
+        title="Latest Reading"
+        value={
+          stats.latestReadingAt
+            ? formatDistanceToNowStrict(new Date(stats.latestReadingAt), {
+                addSuffix: true,
+              })
+            : "—"
+        }
+        icon={<Clock className="h-4 w-4" />}
+        description="Time since last reading"
       />
       <StatCard
         title="Monthly Readings"
@@ -94,7 +101,7 @@ export function StatsCards({ stats }: StatsCardsProps) {
       <StatCard
         title="Reservoir Level"
         value={stats.reservoirLevel?.toFixed(0) ?? "—"}
-        unit="%"
+        unit="in"
         icon={<Waves className="h-4 w-4" />}
         description={reservoirStatus.description}
         status={reservoirStatus.status}
@@ -130,7 +137,7 @@ function getReservoirStatus(level: number | null): {
     return { status: "critical", description: "Critically low" };
   }
   if (level < 50) {
-    return { status: "warning", description: "Below 50% capacity" };
+    return { status: "warning", description: "Below 50 inches" };
   }
   return { status: "normal", description: "Adequate level" };
 }

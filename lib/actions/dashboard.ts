@@ -99,17 +99,43 @@ export async function getRecentReadings(
 export async function getDashboardStatsFallback() {
   const supabase = await createClient();
 
-  // Get today's readings count
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const { count: todayCount } = await supabase
+  // Get latest reading timestamp (from any reading type)
+  const { data: latestMeter } = await supabase
     .from("meter_readings")
-    .select("*", { count: "exact", head: true })
-    .gte("recorded_at", today.toISOString());
+    .select("recorded_at")
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  const { data: latestChlorineReading } = await supabase
+    .from("chlorine_readings")
+    .select("recorded_at")
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  const { data: latestReservoir } = await supabase
+    .from("reservoir_readings")
+    .select("recorded_at, level_inches")
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  // Find the most recent reading across all types
+  const timestamps = [
+    latestMeter?.recorded_at,
+    latestChlorineReading?.recorded_at,
+    latestReservoir?.recorded_at,
+  ].filter(Boolean) as string[];
+
+  const latestReadingAt =
+    timestamps.length > 0
+      ? timestamps.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
+      : null;
 
   // Get this month's readings
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const { count: monthCount } = await supabase
     .from("meter_readings")
     .select("*", { count: "exact", head: true })
@@ -123,16 +149,11 @@ export async function getDashboardStatsFallback() {
     .limit(1)
     .single();
 
-  // Get reservoir count
-  const { count: reservoirCount } = await supabase
-    .from("reservoirs")
-    .select("*", { count: "exact", head: true });
-
   return {
-    todayReadings: todayCount ?? 0,
+    latestReadingAt,
     monthReadings: monthCount ?? 0,
     latestChlorine: latestChlorine?.residual_level ?? null,
-    reservoirCount: reservoirCount ?? 0,
+    reservoirLevel: latestReservoir?.level_inches ?? null,
   };
 }
 

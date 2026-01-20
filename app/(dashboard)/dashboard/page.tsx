@@ -47,10 +47,10 @@ async function StatsCardsSection() {
   return (
     <StatsCards
       stats={{
-        todayReadings: stats.todayReadings,
+        latestReadingAt: stats.latestReadingAt,
         monthReadings: stats.monthReadings,
         latestChlorine: stats.latestChlorine,
-        reservoirLevel: null, // Will be populated when reservoir readings exist
+        reservoirLevel: stats.reservoirLevel,
       }}
     />
   );
