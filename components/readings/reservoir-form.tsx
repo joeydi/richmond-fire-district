@@ -141,7 +141,7 @@ export function ReservoirForm({ reservoirs, lastReadings }: ReservoirFormProps) 
 
           <Collapsible>
             <CollapsibleTrigger className="flex w-full items-center justify-between text-base font-medium text-slate-700">
-              Notes (optional)
+              Notes
               <ChevronDown className="h-4 w-4 transition-transform [[data-state=open]>svg]:rotate-180" />
             </CollapsibleTrigger>
             <CollapsibleContent className="pt-2">
