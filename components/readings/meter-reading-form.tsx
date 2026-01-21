@@ -30,11 +30,13 @@ interface Meter {
 
 interface MeterReadingFormProps {
   meters: Meter[];
+  lastReadings: Record<string, number | null>;
 }
 
-export function MeterReadingForm({ meters }: MeterReadingFormProps) {
+export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps) {
   const [meterId, setMeterId] = useState(meters[0].id ?? '');
-  const [readingValue, setReadingValue] = useState("");
+  const lastReading = lastReadings[meters[0]?.id];
+  const [readingValue, setReadingValue] = useState('');
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -101,7 +103,7 @@ export function MeterReadingForm({ meters }: MeterReadingFormProps) {
               inputMode="decimal"
               step="0.01"
               min="0"
-              placeholder="0.00"
+              placeholder={lastReading != null ? lastReading.toLocaleString() : "0.00"}
               value={readingValue}
               onChange={(e) => setReadingValue(e.target.value)}
               required

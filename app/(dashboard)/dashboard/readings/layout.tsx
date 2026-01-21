@@ -13,17 +13,15 @@ export default async function ReadingsLayout({
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-4 justify-between">
+      <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <ReadingsNav />
         {canEdit && (
-          <div className="flex justify-end">
-            <Button asChild variant="outline">
-              <Link href="/dashboard/readings/import">
-                <Upload className="mr-2 h-4 w-4" />
-                Import CSV
-              </Link>
-            </Button>
-          </div>
+          <Button asChild variant="outline" className="hidden sm:flex">
+            <Link href="/dashboard/readings/import">
+              <Upload className="mr-2 h-4 w-4" />
+              Import CSV
+            </Link>
+          </Button>
         )}
       </div>
       {children}

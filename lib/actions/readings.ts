@@ -308,6 +308,64 @@ export async function getReservoirReadingsHistory(
   }
 }
 
+// Get last reading functions
+export async function getLastMeterReading(
+  meterId: string
+): Promise<number | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("meter_readings")
+    .select("reading_value")
+    .eq("meter_id", meterId)
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data.reading_value;
+}
+
+export async function getLastChlorineReading(): Promise<number | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("chlorine_readings")
+    .select("residual_level")
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data.residual_level;
+}
+
+export async function getLastReservoirReading(
+  reservoirId: string
+): Promise<number | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("reservoir_readings")
+    .select("level_inches")
+    .eq("reservoir_id", reservoirId)
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data.level_inches;
+}
+
 // Update functions
 export async function updateMeterReading(
   id: string,

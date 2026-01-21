@@ -31,11 +31,15 @@ interface Reservoir {
 
 interface ReservoirFormProps {
   reservoirs: Reservoir[];
+  lastReadings: Record<string, number | null>;
 }
 
-export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
+export function ReservoirForm({ reservoirs, lastReadings }: ReservoirFormProps) {
   const [reservoirId, setReservoirId] = useState(reservoirs[0].id ?? '');
-  const [levelInches, setLevelInches] = useState("");
+  const initialReading = lastReadings[reservoirs[0]?.id];
+  const [levelInches, setLevelInches] = useState(
+    initialReading != null ? initialReading.toString() : ""
+  );
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -118,8 +122,9 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
               id="level"
               type="number"
               inputMode="decimal"
-              step="0.1"
+              step="1"
               min="0"
+              max={maxLevel}
               placeholder="0.0"
               value={levelInches}
               onChange={(e) => setLevelInches(e.target.value)}

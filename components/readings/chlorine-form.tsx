@@ -11,35 +11,23 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChevronDown } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { insertChlorineReading } from "@/lib/actions/readings";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-interface Location {
-  id: string;
-  name: string;
-  type: string;
-}
-
 interface ChlorineFormProps {
-  locations: Location[];
+  lastReading: number | null;
 }
 
 const SAFE_MIN = 0.2;
 const SAFE_MAX = 4.0;
 
-export function ChlorineForm({ locations }: ChlorineFormProps) {
-  const [locationId, setLocationId] = useState("");
-  const [residualLevel, setResidualLevel] = useState("");
+export function ChlorineForm({ lastReading }: ChlorineFormProps) {
+  const [residualLevel, setResidualLevel] = useState(
+    lastReading != null ? lastReading.toFixed(2) : ""
+  );
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -55,7 +43,6 @@ export function ChlorineForm({ locations }: ChlorineFormProps) {
 
     try {
       const result = await insertChlorineReading({
-        locationId: locationId && locationId !== "none" ? locationId : undefined,
         residualLevel: parseFloat(residualLevel),
         recordedAt: new Date().toISOString(),
         notes: notes || undefined,
@@ -83,27 +70,6 @@ export function ChlorineForm({ locations }: ChlorineFormProps) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="location" className="text-base">
-              Location (optional)
-            </Label>
-            <Select value={locationId} onValueChange={setLocationId}>
-              <SelectTrigger className="h-14 text-lg">
-                <SelectValue placeholder="Select a location" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none" className="text-lg py-3">
-                  No specific location
-                </SelectItem>
-                {locations.map((location) => (
-                  <SelectItem key={location.id} value={location.id} className="text-lg py-3">
-                    {location.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="space-y-2">
             <Label htmlFor="level" className="text-base">
               Chlorine Residual (mg/L)
