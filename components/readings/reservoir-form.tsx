@@ -3,8 +3,14 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ChevronDown } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -16,7 +22,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { insertReservoirReading } from "@/lib/actions/readings";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 interface Reservoir {
   id: string;
@@ -75,17 +80,10 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
     }
   };
 
-  const gaugeColor = useMemo(() => {
-    if (percentage >= 75) return "bg-blue-500";
-    if (percentage >= 50) return "bg-blue-400";
-    if (percentage >= 25) return "bg-amber-400";
-    return "bg-red-400";
-  }, [percentage]);
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Record Reading</CardTitle>
+        <CardTitle>Reservoir Reading</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -136,57 +134,22 @@ export function ReservoirForm({ reservoirs }: ReservoirFormProps) {
             )}
           </div>
 
-          {/* Visual gauge */}
-          {reservoirId && (
-            <div className="space-y-2">
-              <div className="relative h-48 w-full rounded-lg border-2 border-slate-300 bg-slate-100 overflow-hidden">
-                {/* Water level */}
-                <div
-                  className={cn(
-                    "absolute bottom-0 left-0 right-0 transition-all duration-300",
-                    gaugeColor
-                  )}
-                  style={{ height: `${percentage}%` }}
-                >
-                  {/* Wave effect */}
-                  <div className="absolute inset-x-0 -top-2 h-4 bg-gradient-to-b from-white/30 to-transparent" />
-                </div>
-
-                {/* Level markers */}
-                <div className="absolute inset-y-0 right-2 flex flex-col justify-between py-2 text-xs text-slate-500">
-                  <span>100%</span>
-                  <span>75%</span>
-                  <span>50%</span>
-                  <span>25%</span>
-                  <span>0%</span>
-                </div>
-
-                {/* Current reading display */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="rounded-lg bg-white/90 px-4 py-2 text-center shadow">
-                    <p className="text-3xl font-bold text-slate-900">
-                      {!isNaN(level) ? level.toFixed(1) : "—"}
-                    </p>
-                    <p className="text-sm text-slate-600">inches</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="notes" className="text-base">
+          <Collapsible>
+            <CollapsibleTrigger className="flex w-full items-center justify-between text-base font-medium text-slate-700">
               Notes (optional)
-            </Label>
-            <Textarea
-              id="notes"
-              placeholder="Add any notes..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              disabled={loading}
-              className="min-h-[100px] text-base"
-            />
-          </div>
+              <ChevronDown className="h-4 w-4 transition-transform [[data-state=open]>svg]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <Textarea
+                id="notes"
+                placeholder="Add any notes..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                disabled={loading}
+                className="min-h-[100px] text-base"
+              />
+            </CollapsibleContent>
+          </Collapsible>
 
           <Button
             type="submit"

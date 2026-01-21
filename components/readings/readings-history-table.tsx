@@ -164,7 +164,7 @@ function toLocalDateTimeString(isoString: string): string {
   return localDate.toISOString().slice(0, 16);
 }
 
-function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }) {
+export function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }) {
   const [isPending, startTransition] = useTransition();
   const [readingToDelete, setReadingToDelete] = useState<string | null>(null);
   const [readingToEdit, setReadingToEdit] = useState<MeterReadingRow | null>(null);
@@ -344,7 +344,7 @@ function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }) {
   );
 }
 
-function ChlorineReadingsTable({
+export function ChlorineReadingsTable({
   readings,
 }: {
   readings: ChlorineReadingRow[];
@@ -529,7 +529,7 @@ function ChlorineReadingsTable({
   );
 }
 
-function ReservoirReadingsTable({
+export function ReservoirReadingsTable({
   readings,
 }: {
   readings: ReservoirReadingRow[];

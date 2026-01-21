@@ -3,8 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ChevronDown } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -49,7 +55,7 @@ export function ChlorineForm({ locations }: ChlorineFormProps) {
 
     try {
       const result = await insertChlorineReading({
-        locationId: locationId || undefined,
+        locationId: locationId && locationId !== "none" ? locationId : undefined,
         residualLevel: parseFloat(residualLevel),
         recordedAt: new Date().toISOString(),
         notes: notes || undefined,
@@ -73,7 +79,7 @@ export function ChlorineForm({ locations }: ChlorineFormProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Record Reading</CardTitle>
+        <CardTitle>Chlorine Reading</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -86,7 +92,7 @@ export function ChlorineForm({ locations }: ChlorineFormProps) {
                 <SelectValue placeholder="Select a location" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="" className="text-lg py-3">
+                <SelectItem value="none" className="text-lg py-3">
                   No specific location
                 </SelectItem>
                 {locations.map((location) => (
@@ -134,37 +140,22 @@ export function ChlorineForm({ locations }: ChlorineFormProps) {
             </div>
           </div>
 
-          {/* Visual indicator */}
-          <div className="space-y-2">
-            <div className="h-4 rounded-full bg-gradient-to-r from-amber-400 via-green-400 to-red-400 relative">
-              {!isNaN(level) && level >= 0 && level <= 10 && (
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-4 h-6 bg-white border-2 border-slate-700 rounded"
-                  style={{ left: `calc(${(level / 10) * 100}% - 8px)` }}
-                />
-              )}
-            </div>
-            <div className="flex justify-between text-xs text-slate-500">
-              <span>0</span>
-              <span>{SAFE_MIN}</span>
-              <span>{SAFE_MAX}</span>
-              <span>10</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="notes" className="text-base">
+          <Collapsible>
+            <CollapsibleTrigger className="flex w-full items-center justify-between text-base font-medium text-slate-700">
               Notes (optional)
-            </Label>
-            <Textarea
-              id="notes"
-              placeholder="Add any notes..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              disabled={loading}
-              className="min-h-[100px] text-base"
-            />
-          </div>
+              <ChevronDown className="h-4 w-4 transition-transform [[data-state=open]>svg]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <Textarea
+                id="notes"
+                placeholder="Add any notes..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                disabled={loading}
+                className="min-h-[100px] text-base"
+              />
+            </CollapsibleContent>
+          </Collapsible>
 
           <Button
             type="submit"

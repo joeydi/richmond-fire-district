@@ -3,8 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ChevronDown } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -63,7 +69,7 @@ export function MeterReadingForm({ meters }: MeterReadingFormProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Record Reading</CardTitle>
+        <CardTitle>Meter Reading</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -104,19 +110,22 @@ export function MeterReadingForm({ meters }: MeterReadingFormProps) {
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="notes" className="text-base">
+          <Collapsible>
+            <CollapsibleTrigger className="flex w-full items-center justify-between text-base font-medium text-slate-700">
               Notes (optional)
-            </Label>
-            <Textarea
-              id="notes"
-              placeholder="Add any notes..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              disabled={loading}
-              className="min-h-[100px] text-base"
-            />
-          </div>
+              <ChevronDown className="h-4 w-4 transition-transform [[data-state=open]>svg]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <Textarea
+                id="notes"
+                placeholder="Add any notes..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                disabled={loading}
+                className="min-h-[100px] text-base"
+              />
+            </CollapsibleContent>
+          </Collapsible>
 
           <Button
             type="submit"
