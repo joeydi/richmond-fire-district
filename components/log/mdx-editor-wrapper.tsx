@@ -20,6 +20,7 @@ const MDXEditor = dynamic(
 import {
   headingsPlugin,
   listsPlugin,
+  quotePlugin,
   linkPlugin,
   linkDialogPlugin,
   toolbarPlugin,
@@ -50,10 +51,11 @@ export function LogContentEditor({
         markdown={value}
         onChange={onChange}
         placeholder={placeholder}
-        contentEditableClassName="prose prose-slate max-w-none min-h-[200px] p-4 focus:outline-none"
+        contentEditableClassName="prose prose-slate prose-blockquote:font-normal max-w-none min-h-[200px] p-4 focus:outline-none"
         plugins={[
           headingsPlugin({ allowedHeadingLevels: [1, 2, 3] }),
           listsPlugin(),
+          quotePlugin(),
           linkPlugin(),
           linkDialogPlugin(),
           toolbarPlugin({

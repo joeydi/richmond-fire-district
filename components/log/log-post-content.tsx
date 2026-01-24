@@ -8,7 +8,7 @@ interface LogPostContentProps {
 
 export function LogPostContent({ content }: LogPostContentProps) {
   return (
-    <div className="prose prose-slate max-w-none">
+    <div className="prose prose-slate prose-blockquote:font-normal max-w-none">
       <ReactMarkdown
         components={{
           // Ensure links open in new tab for external links
