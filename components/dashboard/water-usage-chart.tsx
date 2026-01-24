@@ -265,11 +265,11 @@ export function WaterUsageChart({
       </CardHeader>
       <CardContent className="pt-0">
         {filteredData.length === 0 ? (
-          <div className="flex h-[400px] items-center justify-center text-slate-500">
+          <div className="flex h-[30vw] min-h-[400px] items-center justify-center text-slate-500">
             No data available for this period
           </div>
         ) : (
-          <div className="h-[400px]">
+          <div className="h-[30vw] min-h-[400px]">
             <ReactECharts
               option={option}
               style={{ height: "100%", width: "100%" }}
