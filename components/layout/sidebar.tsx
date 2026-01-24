@@ -94,7 +94,7 @@ export function Sidebar({ isAdmin = false, user }: SidebarProps) {
           </>
         )}
       </nav>
-      <UserMenu user={user} />
+      <UserMenu user={user ?? null} />
     </div>
   );
 }
