@@ -5,14 +5,17 @@ import { Toaster } from "sonner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
-import { logout } from "@/lib/actions/auth";
 
 interface DashboardShellProps {
   children: React.ReactNode;
   isAdmin: boolean;
+  user?: {
+    email: string;
+    full_name: string | null;
+  } | null;
 }
 
-export function DashboardShell({ children, isAdmin }: DashboardShellProps) {
+export function DashboardShell({ children, isAdmin, user }: DashboardShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
@@ -20,7 +23,7 @@ export function DashboardShell({ children, isAdmin }: DashboardShellProps) {
       <Toaster position="top-right" richColors />
       {/* Desktop sidebar */}
       <div className="hidden lg:flex lg:flex-shrink-0">
-        <Sidebar isAdmin={isAdmin} />
+        <Sidebar isAdmin={isAdmin} user={user} />
       </div>
 
       {/* Mobile navigation */}
@@ -28,14 +31,12 @@ export function DashboardShell({ children, isAdmin }: DashboardShellProps) {
         isOpen={mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
         isAdmin={isAdmin}
+        user={user}
       />
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Header
-          onMenuClick={() => setMobileNavOpen(true)}
-          onLogout={logout}
-        />
+        <Header onMenuClick={() => setMobileNavOpen(true)} />
         <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
       </div>
     </div>

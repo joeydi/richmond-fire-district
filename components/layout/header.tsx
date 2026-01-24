@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Menu, LogOut } from "lucide-react";
+import { Menu } from "lucide-react";
 
 const TITLE_MAP: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -19,6 +19,7 @@ const TITLE_MAP: Record<string, string> = {
   "/dashboard/map": "System Map",
   "/dashboard/infrastructure": "Infrastructure Points",
   "/dashboard/admin/users": "User Management",
+  "/dashboard/account": "Account Settings",
 };
 
 function getPageTitle(pathname: string): string {
@@ -41,17 +42,15 @@ function getPageTitle(pathname: string): string {
 }
 
 interface HeaderProps {
-  userEmail?: string;
   onMenuClick?: () => void;
-  onLogout?: () => void;
 }
 
-export function Header({ userEmail, onMenuClick, onLogout }: HeaderProps) {
+export function Header({ onMenuClick }: HeaderProps) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-white px-4 lg:px-6">
+    <header className="flex h-16 items-center border-b bg-white px-4 lg:px-6">
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
@@ -65,18 +64,6 @@ export function Header({ userEmail, onMenuClick, onLogout }: HeaderProps) {
         {title && (
           <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
         )}
-      </div>
-
-      <div className="flex items-center gap-4">
-        {userEmail && (
-          <span className="hidden text-sm text-slate-600 sm:inline">
-            {userEmail}
-          </span>
-        )}
-        <Button variant="ghost" size="icon" onClick={onLogout}>
-          <LogOut className="h-5 w-5" />
-          <span className="sr-only">Log out</span>
-        </Button>
       </div>
     </header>
   );

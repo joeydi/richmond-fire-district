@@ -13,6 +13,7 @@ import {
   Users,
   Settings,
 } from "lucide-react";
+import { UserMenu } from "./user-menu";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -30,9 +31,13 @@ const adminNavigation = [
 
 interface SidebarProps {
   isAdmin?: boolean;
+  user?: {
+    email: string;
+    full_name: string | null;
+  } | null;
 }
 
-export function Sidebar({ isAdmin = false }: SidebarProps) {
+export function Sidebar({ isAdmin = false, user }: SidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -89,6 +94,7 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
           </>
         )}
       </nav>
+      <UserMenu user={user} />
     </div>
   );
 }

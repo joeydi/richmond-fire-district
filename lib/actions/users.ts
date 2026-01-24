@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth/roles";
+import { requireAdmin, requireAuth } from "@/lib/auth/roles";
 import { revalidatePath } from "next/cache";
 import type { UserRole, Profile } from "@/lib/types/database";
 
@@ -116,6 +116,59 @@ export async function sendInviteEmail(
       shouldCreateUser: false,
       emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/dashboard`,
     },
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+export async function updateOwnProfile(data: {
+  name?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const user = await requireAuth();
+
+  const supabase = await createClient();
+
+  const updateData: { full_name?: string } = {};
+  if (data.name !== undefined) updateData.full_name = data.name;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update(updateData)
+    .eq("id", user.id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+export async function updatePassword(data: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const user = await requireAuth();
+
+  const supabase = await createClient();
+
+  // Verify current password by attempting to sign in
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: data.currentPassword,
+  });
+
+  if (signInError) {
+    return { success: false, error: "Current password is incorrect" };
+  }
+
+  // Update to new password
+  const { error } = await supabase.auth.updateUser({
+    password: data.newPassword,
   });
 
   if (error) {

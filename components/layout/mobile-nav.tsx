@@ -9,9 +9,13 @@ interface MobileNavProps {
   isOpen: boolean;
   onClose: () => void;
   isAdmin?: boolean;
+  user?: {
+    email: string;
+    full_name: string | null;
+  } | null;
 }
 
-export function MobileNav({ isOpen, onClose, isAdmin = false }: MobileNavProps) {
+export function MobileNav({ isOpen, onClose, isAdmin = false, user }: MobileNavProps) {
   // Close on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -47,7 +51,7 @@ export function MobileNav({ isOpen, onClose, isAdmin = false }: MobileNavProps) 
       {/* Sidebar */}
       <div className="fixed inset-y-0 left-0 w-64">
         <div className="relative h-full">
-          <Sidebar isAdmin={isAdmin} />
+          <Sidebar isAdmin={isAdmin} user={user} />
           <Button
             variant="ghost"
             size="icon"
