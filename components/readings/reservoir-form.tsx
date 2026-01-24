@@ -104,7 +104,7 @@ export function ReservoirForm({ reservoirs, lastReadings }: ReservoirFormProps) 
                   <SelectItem key={reservoir.id} value={reservoir.id} className="text-lg py-3">
                     {reservoir.name}
                     {reservoir.max_level_inches && (
-                      <span className="text-slate-500 ml-2">
+                      <span className="text-slate-500 text-sm">
                         (max {reservoir.max_level_inches} in)
                       </span>
                     )}
@@ -132,11 +132,6 @@ export function ReservoirForm({ reservoirs, lastReadings }: ReservoirFormProps) 
               disabled={loading}
               className="h-16 text-2xl font-mono text-center"
             />
-            {maxLevel > 0 && !isNaN(level) && (
-              <p className="text-center text-sm text-slate-600">
-                {percentage.toFixed(1)}% of capacity
-              </p>
-            )}
           </div>
 
           <Collapsible>

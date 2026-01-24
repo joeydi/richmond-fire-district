@@ -93,17 +93,6 @@ export function ChlorineForm({ lastReading }: ChlorineFormProps) {
                 isHigh && "border-red-500 bg-red-50"
               )}
             />
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Safe range: {SAFE_MIN} - {SAFE_MAX} mg/L</span>
-              {isOutOfRange && (
-                <span className={cn(
-                  "font-medium",
-                  isLow ? "text-amber-600" : "text-red-600"
-                )}>
-                  {isLow ? "⚠️ Low" : "⚠️ High"}
-                </span>
-              )}
-            </div>
           </div>
 
           <Collapsible>
