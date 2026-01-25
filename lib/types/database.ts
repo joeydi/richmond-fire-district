@@ -108,3 +108,38 @@ export interface Parcel {
   created_at: string;
   updated_at: string;
 }
+
+export type DigestFrequency = "daily" | "weekly";
+
+export interface NotificationPreferences {
+  id: string;
+  user_id: string;
+
+  // Contact information
+  phone_number: string | null;
+
+  // New log post notifications
+  notify_new_log_posts: boolean;
+  notify_new_log_posts_email: boolean;
+  notify_new_log_posts_sms: boolean;
+
+  // Missing meter reading alerts
+  notify_missing_meter_readings: boolean;
+  notify_missing_meter_readings_email: boolean;
+  notify_missing_meter_readings_sms: boolean;
+  missing_meter_reading_days: number;
+
+  // Missing chlorine reading alerts
+  notify_missing_chlorine_readings: boolean;
+  notify_missing_chlorine_readings_email: boolean;
+  notify_missing_chlorine_readings_sms: boolean;
+  missing_chlorine_reading_days: number;
+
+  // Digest preferences
+  digest_enabled: boolean;
+  digest_frequency: DigestFrequency;
+  digest_email: boolean;
+
+  created_at: string;
+  updated_at: string;
+}
