@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ScanEye } from "lucide-react";
+import { ChevronDown, Droplets, ScanEye } from "lucide-react";
 import { CameraCapture } from "./camera-capture";
 import {
   Select,
@@ -74,8 +74,11 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Meter Reading</CardTitle>
+        <div className="rounded-full bg-blue-100 p-2 text-blue-600">
+          <Droplets className="h-4 w-4" />
+        </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
