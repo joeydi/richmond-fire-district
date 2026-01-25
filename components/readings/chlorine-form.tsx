@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, FlaskConical } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { insertChlorineReading } from "@/lib/actions/readings";
@@ -65,8 +65,11 @@ export function ChlorineForm({ lastReading }: ChlorineFormProps) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Chlorine Reading</CardTitle>
+        <div className="rounded-full bg-blue-100 p-2 text-blue-600">
+          <FlaskConical className="h-4 w-4" />
+        </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
