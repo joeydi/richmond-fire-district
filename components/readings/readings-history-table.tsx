@@ -230,6 +230,7 @@ export function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }
             <TableHead>Date</TableHead>
             <TableHead>Meter</TableHead>
             <TableHead className="text-right">Reading (gal)</TableHead>
+            <TableHead className="text-right">Rate (gpm)</TableHead>
             <TableHead>Notes</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
@@ -243,6 +244,11 @@ export function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }
               <TableCell>{reading.meter_name ?? "—"}</TableCell>
               <TableCell className="text-right">
                 {reading.reading_value.toLocaleString()}
+              </TableCell>
+              <TableCell className="text-right">
+                {reading.production_rate != null
+                  ? reading.production_rate.toFixed(2)
+                  : "—"}
               </TableCell>
               <TableCell className="max-w-[200px] truncate">
                 {reading.notes ?? "—"}

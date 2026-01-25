@@ -35,6 +35,61 @@ export type MeterReadingInput = z.infer<typeof meterReadingSchema>;
 export type ChlorineInput = z.infer<typeof chlorineSchema>;
 export type ReservoirInput = z.infer<typeof reservoirSchema>;
 
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+async function calculateProductionRate(
+  meterId: string,
+  readingValue: number,
+  recordedAt: Date,
+  excludeId?: string
+): Promise<number | null> {
+  const supabase = await createClient();
+  const windowStart = new Date(recordedAt.getTime() - FIVE_MINUTES_MS);
+  const windowEnd = new Date(recordedAt.getTime() + FIVE_MINUTES_MS);
+
+  let query = supabase
+    .from("meter_readings")
+    .select("id, reading_value, recorded_at")
+    .eq("meter_id", meterId)
+    .gte("recorded_at", windowStart.toISOString())
+    .lte("recorded_at", windowEnd.toISOString())
+    .order("recorded_at", { ascending: true });
+
+  if (excludeId) {
+    query = query.neq("id", excludeId);
+  }
+
+  const { data: nearbyReadings, error } = await query;
+
+  if (error || !nearbyReadings || nearbyReadings.length === 0) {
+    return null;
+  }
+
+  // Find readings that are OLDER than the new reading
+  const olderReadings = nearbyReadings.filter(
+    (r) => new Date(r.recorded_at) < recordedAt
+  );
+
+  if (olderReadings.length === 0) {
+    return null;
+  }
+
+  // Get the most recent older reading (closest to the new reading)
+  const olderReading = olderReadings[olderReadings.length - 1];
+
+  // Only calculate rate if new value > old value (not a meter reset)
+  if (readingValue <= olderReading.reading_value) {
+    return null;
+  }
+
+  const valueDiff = readingValue - olderReading.reading_value;
+  const timeDiffMinutes =
+    (recordedAt.getTime() - new Date(olderReading.recorded_at).getTime()) /
+    (1000 * 60);
+
+  return timeDiffMinutes > 0 ? valueDiff / timeDiffMinutes : null;
+}
+
 export async function insertMeterReading(
   input: MeterReadingInput
 ): Promise<{ success: boolean; error?: string }> {
@@ -45,11 +100,18 @@ export async function insertMeterReading(
     return { success: false, error: parsed.error.issues[0].message };
   }
 
+  const productionRate = await calculateProductionRate(
+    parsed.data.meterId,
+    parsed.data.readingValue,
+    new Date(parsed.data.recordedAt)
+  );
+
   const supabase = await createClient();
   const { error } = await supabase.from("meter_readings").insert({
     meter_id: parsed.data.meterId,
     reading_value: parsed.data.readingValue,
     recorded_at: parsed.data.recordedAt,
+    production_rate: productionRate,
     notes: parsed.data.notes || null,
     created_by: user.id,
   });
@@ -158,6 +220,7 @@ export interface MeterReadingRow {
   id: string;
   meter_id: string;
   reading_value: number;
+  production_rate: number | null;
   recorded_at: string;
   notes: string | null;
   meter_name: string | null;
@@ -190,9 +253,12 @@ export async function getMeterReadingsHistory(
 
   const { data, count, error } = await supabase
     .from("meter_readings")
-    .select("id, meter_id, reading_value, recorded_at, notes, meters (name)", {
-      count: "exact",
-    })
+    .select(
+      "id, meter_id, reading_value, production_rate, recorded_at, notes, meters (name)",
+      {
+        count: "exact",
+      }
+    )
     .order("recorded_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -205,6 +271,7 @@ export async function getMeterReadingsHistory(
     id: r.id,
     meter_id: r.meter_id,
     reading_value: r.reading_value,
+    production_rate: r.production_rate,
     recorded_at: r.recorded_at,
     notes: r.notes,
     meter_name: r.meters?.name ?? null,
@@ -378,6 +445,13 @@ export async function updateMeterReading(
     return { success: false, error: parsed.error.issues[0].message };
   }
 
+  const productionRate = await calculateProductionRate(
+    parsed.data.meterId,
+    parsed.data.readingValue,
+    new Date(parsed.data.recordedAt),
+    id
+  );
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("meter_readings")
@@ -385,6 +459,7 @@ export async function updateMeterReading(
       meter_id: parsed.data.meterId,
       reading_value: parsed.data.readingValue,
       recorded_at: parsed.data.recordedAt,
+      production_rate: productionRate,
       notes: parsed.data.notes || null,
     })
     .eq("id", id);

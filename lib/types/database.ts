@@ -46,6 +46,7 @@ export interface MeterReading {
   recorded_at: string;
   meter_id: string | null;
   reading_value: number;
+  production_rate: number | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
