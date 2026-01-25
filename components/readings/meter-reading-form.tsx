@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ScanEye } from "lucide-react";
+import { CameraCapture } from "./camera-capture";
 import {
   Select,
   SelectContent,
@@ -39,6 +40,8 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
   const [readingValue, setReadingValue] = useState('');
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [capturedAt, setCapturedAt] = useState<string | null>(null);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,7 +52,7 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
       const result = await insertMeterReading({
         meterId,
         readingValue: parseFloat(readingValue),
-        recordedAt: new Date().toISOString(),
+        recordedAt: capturedAt || new Date().toISOString(),
         notes: notes || undefined,
       });
 
@@ -57,6 +60,7 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
         toast.success("Reading recorded successfully");
         setReadingValue("");
         setNotes("");
+        setCapturedAt(null);
         router.refresh();
       } else {
         toast.error(result.error || "Failed to record reading");
@@ -94,9 +98,20 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="reading" className="text-base">
-              Reading Value (gallons)
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="reading" className="text-base">
+                Reading Value (gallons)
+              </Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setShowCamera(!showCamera)}
+                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+              >
+                <ScanEye className="h-8 w-8" />
+              </Button>
+            </div>
             <Input
               id="reading"
               type="number"
@@ -110,6 +125,15 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
               disabled={loading}
               className="h-16 text-2xl font-mono text-center"
             />
+            {showCamera && (
+              <CameraCapture
+                onReadingDetected={(reading, timestamp) => {
+                  setReadingValue(reading);
+                  setCapturedAt(timestamp);
+                }}
+                onClose={() => setShowCamera(false)}
+              />
+            )}
           </div>
 
           <Collapsible>
