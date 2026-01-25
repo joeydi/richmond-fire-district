@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { format, parseISO } from "date-fns";
 
 export interface DailyUsage {
   date: string;
@@ -165,13 +166,59 @@ export async function getDashboardStatsFallback() {
       ? timestamps.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
       : null;
 
-  // Get this month's readings
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const { count: monthCount } = await supabase
+  // Get the most recent meter reading to identify which meter to use
+  const { data: mostRecentReading } = await supabase
     .from("meter_readings")
-    .select("*", { count: "exact", head: true })
-    .gte("recorded_at", monthStart.toISOString());
+    .select("meter_id, meters (name)")
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  // Calculate production rate as difference between daily averages for that meter
+  let latestProductionRate: number | null = null;
+  let latestProductionMeter: string | null = null;
+
+  if (mostRecentReading?.meter_id) {
+    latestProductionMeter = (mostRecentReading.meters as unknown as { name: string } | null)?.name ?? null;
+
+    // Get recent readings for this specific meter
+    const { data: meterReadings } = await supabase
+      .from("meter_readings")
+      .select("reading_value, recorded_at")
+      .eq("meter_id", mostRecentReading.meter_id)
+      .order("recorded_at", { ascending: false })
+      .limit(50);
+
+    if (meterReadings && meterReadings.length > 0) {
+      // Group readings by date and calculate daily averages
+      const readingsByDate = new Map<string, number[]>();
+
+      meterReadings.forEach((r) => {
+        const date = format(parseISO(r.recorded_at), "yyyy-MM-dd");
+        if (!readingsByDate.has(date)) {
+          readingsByDate.set(date, []);
+        }
+        readingsByDate.get(date)!.push(r.reading_value);
+      });
+
+      // Sort dates descending and get the two most recent
+      const sortedDates = Array.from(readingsByDate.keys()).sort().reverse();
+
+      if (sortedDates.length >= 2) {
+        const latestDate = sortedDates[0];
+        const previousDate = sortedDates[1];
+
+        const latestValues = readingsByDate.get(latestDate)!;
+        const previousValues = readingsByDate.get(previousDate)!;
+
+        // Calculate averages
+        const latestAvg = latestValues.reduce((a, b) => a + b, 0) / latestValues.length;
+        const previousAvg = previousValues.reduce((a, b) => a + b, 0) / previousValues.length;
+
+        latestProductionRate = Math.round(latestAvg - previousAvg);
+      }
+    }
+  }
 
   // Get latest chlorine reading
   const { data: latestChlorine } = await supabase
@@ -183,7 +230,8 @@ export async function getDashboardStatsFallback() {
 
   return {
     latestReadingAt,
-    monthReadings: monthCount ?? 0,
+    latestProductionRate,
+    latestProductionMeter,
     latestChlorine: latestChlorine?.residual_level ?? null,
     reservoirLevel: latestReservoir?.level_inches ?? null,
   };

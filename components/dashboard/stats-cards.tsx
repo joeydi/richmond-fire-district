@@ -60,7 +60,8 @@ function StatCard({
 interface StatsCardsProps {
   stats: {
     latestReadingAt: string | null;
-    monthReadings: number;
+    latestProductionRate: number | null;
+    latestProductionMeter: string | null;
     latestChlorine: number | null;
     reservoirLevel: number | null;
   };
@@ -85,10 +86,11 @@ export function StatsCards({ stats }: StatsCardsProps) {
         description="Time since last reading"
       />
       <StatCard
-        title="Monthly Readings"
-        value={stats.monthReadings}
+        title="Production Rate"
+        value={stats.latestProductionRate?.toLocaleString() ?? "—"}
+        unit="gal/day"
         icon={<Droplets className="h-4 w-4" />}
-        description="Readings this month"
+        description={stats.latestProductionMeter ?? "No recent readings"}
       />
       <StatCard
         title="Chlorine Level"

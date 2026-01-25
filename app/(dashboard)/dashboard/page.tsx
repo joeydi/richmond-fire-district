@@ -42,7 +42,8 @@ async function StatsCardsSection() {
     <StatsCards
       stats={{
         latestReadingAt: stats.latestReadingAt,
-        monthReadings: stats.monthReadings,
+        latestProductionRate: stats.latestProductionRate,
+        latestProductionMeter: stats.latestProductionMeter,
         latestChlorine: stats.latestChlorine,
         reservoirLevel: stats.reservoirLevel,
       }}
