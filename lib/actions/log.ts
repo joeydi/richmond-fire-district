@@ -15,6 +15,7 @@ import type {
   LogPostWithImages,
   GetLogPostsOptions,
 } from "@/lib/types/log";
+import { notifyNewLogPost } from "@/lib/services/notifications";
 
 const STORAGE_BUCKET = "log-images";
 
@@ -172,6 +173,31 @@ export async function createLogPost(input: {
     console.error("Error creating log post:", error);
     return { success: false, error: error.message };
   }
+
+  // Get author info for notification
+  const { data: authorData } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", authorId)
+    .single();
+
+  const authorName = authorData?.full_name || authorData?.email || "Unknown";
+
+  // Extract title from content (first line or first 50 chars)
+  const contentLines = parsed.data.content.split("\n");
+  const firstLine = contentLines[0].replace(/^#*\s*/, "").trim();
+  const title = firstLine.length > 50 ? firstLine.slice(0, 50) + "..." : firstLine;
+
+  // Send notifications asynchronously (don't block the response)
+  notifyNewLogPost({
+    id: data.id,
+    title,
+    content: parsed.data.content,
+    createdBy: authorName,
+    createdAt: insertData.created_at || new Date().toISOString(),
+  }).catch((err) => {
+    console.error("Error sending log post notifications:", err);
+  });
 
   revalidatePath("/dashboard/log");
   return { success: true, id: data.id };
