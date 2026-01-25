@@ -113,7 +113,7 @@ export function CameraCapture({
         {/* ROI Overlay - dashed cyan rectangle */}
         <div className="absolute inset-0 pointer-events-none">
           <div
-            className="absolute border-2 border-dashed border-cyan-400"
+            className="absolute border-2 border-dashed border-blue-500 rounded-lg"
             style={{ left: "10%", right: "10%", top: "35%", bottom: "35%" }}
           />
         </div>
