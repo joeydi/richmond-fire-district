@@ -72,6 +72,15 @@ const contactTypeBadgeColors: Record<ContactType, string> = {
   other: "bg-slate-100 text-slate-800",
 };
 
+function SortIcon({ column, sortBy, sortOrder }: { column: string; sortBy: string; sortOrder: "asc" | "desc" }) {
+  if (sortBy !== column) return null;
+  return sortOrder === "asc" ? (
+    <ChevronUp className="ml-1 inline h-4 w-4" />
+  ) : (
+    <ChevronDown className="ml-1 inline h-4 w-4" />
+  );
+}
+
 export function ContactsTable({
   contacts,
   totalCount,
@@ -123,15 +132,6 @@ export function ContactsTable({
     updateUrl({ page });
   };
 
-  const SortIcon = ({ column }: { column: string }) => {
-    if (sortBy !== column) return null;
-    return sortOrder === "asc" ? (
-      <ChevronUp className="ml-1 inline h-4 w-4" />
-    ) : (
-      <ChevronDown className="ml-1 inline h-4 w-4" />
-    );
-  };
-
   return (
     <div className="space-y-4">
       {/* Search and Filter */}
@@ -176,18 +176,24 @@ export function ContactsTable({
                 onClick={() => handleSort("name")}
               >
                 Name
-                <SortIcon column="name" />
+                <SortIcon column="name" sortBy={sortBy} sortOrder={sortOrder} />
               </TableHead>
               <TableHead
                 className="cursor-pointer hover:bg-slate-50"
                 onClick={() => handleSort("contact_type")}
               >
                 Type
-                <SortIcon column="contact_type" />
+                <SortIcon column="contact_type" sortBy={sortBy} sortOrder={sortOrder} />
               </TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead>Address</TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-slate-50"
+                onClick={() => handleSort("address")}
+              >
+                Address
+                <SortIcon column="address" sortBy={sortBy} sortOrder={sortOrder} />
+              </TableHead>
               {canEdit && <TableHead className="w-24">Actions</TableHead>}
             </TableRow>
           </TableHeader>
