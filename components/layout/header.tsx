@@ -20,6 +20,7 @@ const TITLE_MAP: Record<string, string> = {
   "/dashboard/infrastructure": "Infrastructure Points",
   "/dashboard/admin/users": "User Management",
   "/dashboard/account": "Account Settings",
+  "/dashboard/notifications": "Notifications",
 };
 
 function getPageTitle(pathname: string): string {

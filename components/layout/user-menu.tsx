@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { User, LogOut, MoreVertical } from "lucide-react";
+import { User, LogOut, MoreVertical, Bell } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,6 +57,12 @@ export function UserMenu({ user }: UserMenuProps) {
             <Link href="/dashboard/account" className="cursor-pointer">
               <User className="mr-2 h-4 w-4" />
               Account
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/dashboard/notifications" className="cursor-pointer">
+              <Bell className="mr-2 h-4 w-4" />
+              Notifications
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
