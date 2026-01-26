@@ -7,7 +7,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 // Richmond, VT coordinates
-const RICHMOND_CENTER: [number, number] = [-72.808, 44.402];
+const RICHMOND_CENTER: [number, number] = [-72.942, 44.371];
 
 export function AnimatedMap() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -21,8 +21,8 @@ export function AnimatedMap() {
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: RICHMOND_CENTER,
-      zoom: 14,
-      pitch: 60,
+      zoom: 15.5,
+      pitch: 65,
       bearing: 0,
       antialias: true,
       interactive: false,
@@ -39,7 +39,7 @@ export function AnimatedMap() {
         maxzoom: 14,
       });
 
-      map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
+      map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.25 });
 
       // Add sky atmosphere
       map.current.addLayer({
@@ -57,7 +57,7 @@ export function AnimatedMap() {
         if (!map.current) return;
 
         // Rotate the camera at a slow rate
-        const rotationSpeed = 0.003;
+        const rotationSpeed = 0.004;
         map.current.rotateTo((timestamp * rotationSpeed) % 360, {
           duration: 0,
         });
