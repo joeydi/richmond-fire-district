@@ -239,6 +239,51 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_MAPBOX_TOKEN=
 ```
 
+Optional for notifications (email/SMS):
+```
+# SendGrid (email notifications)
+SENDGRID_API_KEY=
+SENDGRID_FROM_EMAIL=noreply@example.com
+SENDGRID_FROM_NAME=Richmond Fire District
+
+# Twilio (SMS notifications)
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=+1234567890
+
+# Vercel Cron authentication (set in Vercel dashboard)
+CRON_SECRET=your-vercel-cron-secret
+
+# API authentication for manual triggers
+NOTIFICATION_API_SECRET=your-secret-key
+```
+
+## Vercel Cron Jobs
+
+Cron jobs are configured in `vercel.json` and run automatically on Vercel:
+
+| Schedule | Endpoint | Description |
+|----------|----------|-------------|
+| Daily 8am UTC | `/api/cron/daily` | Check missing readings + send daily digests |
+| Monday 8am UTC | `/api/cron/weekly` | Send weekly digest emails |
+
+To enable:
+1. Add `CRON_SECRET` environment variable in Vercel dashboard
+2. Deploy to Vercel (crons auto-configure from vercel.json)
+
+## Notification API Endpoints
+
+The following API endpoints can be called by cron jobs or webhooks:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/notifications/log-post` | POST | Notify users of new log posts (called automatically) |
+| `/api/notifications/check-readings` | POST | Check for missing readings and alert users |
+| `/api/notifications/digest?frequency=daily` | POST | Send daily digest emails |
+| `/api/notifications/digest?frequency=weekly` | POST | Send weekly digest emails |
+
+All endpoints require `Authorization: Bearer {NOTIFICATION_API_SECRET}` header.
+
 ## Adding New Features
 
 ### New Server Action
