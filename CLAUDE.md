@@ -251,9 +251,25 @@ TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 TWILIO_FROM_NUMBER=+1234567890
 
-# API authentication for cron jobs
+# Vercel Cron authentication (set in Vercel dashboard)
+CRON_SECRET=your-vercel-cron-secret
+
+# API authentication for manual triggers
 NOTIFICATION_API_SECRET=your-secret-key
 ```
+
+## Vercel Cron Jobs
+
+Cron jobs are configured in `vercel.json` and run automatically on Vercel:
+
+| Schedule | Endpoint | Description |
+|----------|----------|-------------|
+| Daily 8am UTC | `/api/cron/daily` | Check missing readings + send daily digests |
+| Monday 8am UTC | `/api/cron/weekly` | Send weekly digest emails |
+
+To enable:
+1. Add `CRON_SECRET` environment variable in Vercel dashboard
+2. Deploy to Vercel (crons auto-configure from vercel.json)
 
 ## Notification API Endpoints
 
