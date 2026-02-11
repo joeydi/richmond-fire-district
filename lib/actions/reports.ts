@@ -9,6 +9,7 @@ import {
   getDaysInMonth,
   type ReadingPoint,
 } from "@/lib/utils/interpolation";
+import { getDailyUsage } from "@/lib/actions/dashboard";
 
 // Types
 export interface ReportDayData {
@@ -99,14 +100,12 @@ export async function getMonthlyReportData(
   const nextMonth = format(addMonths(monthStart, 1), "yyyy-MM");
   const prevMonth = format(addMonths(monthStart, -1), "yyyy-MM");
 
-  // Fetch meter readings for the month (filtered by meterId)
-  const { data: meterReadings } = await supabase
-    .from("meter_readings")
-    .select("id, reading_value, recorded_at, meter_id")
-    .gte("recorded_at", `${month}-01T00:00:00`)
-    .lt("recorded_at", `${nextMonth}-01T00:00:00`)
-    .eq("meter_id", meterId)
-    .order("recorded_at");
+  // Fetch meter readings via RPC (already grouped and averaged by day)
+  const meterReadingsData = await getDailyUsage(
+    `${month}-01`,
+    `${nextMonth}-01`,
+    meterId
+  );
 
   // Fetch all chlorine readings for the month (no location filter)
   const { data: chlorineReadings } = await supabase
@@ -116,33 +115,21 @@ export async function getMonthlyReportData(
     .lt("recorded_at", `${nextMonth}-01T00:00:00`)
     .order("recorded_at");
 
-  // Fetch previous month's meter readings to calculate carry total with same interpolation logic
-  const { data: prevMeterReadings } = await supabase
-    .from("meter_readings")
-    .select("id, reading_value, recorded_at")
-    .eq("meter_id", meterId)
-    .gte("recorded_at", `${prevMonth}-01T00:00:00`)
-    .lt("recorded_at", `${month}-01T00:00:00`)
-    .order("recorded_at");
+  // Fetch previous month's meter readings to calculate carry total
+  const prevMeterReadingsData = await getDailyUsage(
+    `${prevMonth}-01`,
+    `${month}-01`,
+    meterId
+  );
 
-  // Calculate carry total using same interpolation logic as report table
+  // Calculate carry total using interpolation logic
   let carryTotal: number | null = null;
-  if (prevMeterReadings && prevMeterReadings.length > 0) {
-    // Group previous month readings by date and calculate daily averages
-    const prevMeterByDate = new Map<string, number[]>();
-    prevMeterReadings.forEach((r) => {
-      const date = format(parseISO(r.recorded_at), "yyyy-MM-dd");
-      if (!prevMeterByDate.has(date)) {
-        prevMeterByDate.set(date, []);
-      }
-      prevMeterByDate.get(date)!.push(r.reading_value);
-    });
-
-    const prevMeterAverages: ReadingPoint[] = [];
-    prevMeterByDate.forEach((values, date) => {
-      const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      prevMeterAverages.push({ date, value: avg });
-    });
+  if (prevMeterReadingsData.length > 0) {
+    // Convert RPC result to ReadingPoint format
+    const prevMeterAverages: ReadingPoint[] = prevMeterReadingsData.map((r) => ({
+      date: r.date,
+      value: r.total_usage,
+    }));
 
     // Get all days in previous month and interpolate
     const prevMonthDates = getDaysInMonth(prevMonth);
@@ -159,16 +146,13 @@ export async function getMonthlyReportData(
     }
   }
 
-  // Group readings by date and calculate daily averages
-  const meterByDate = new Map<string, number[]>();
-  meterReadings?.forEach((r) => {
-    const date = format(parseISO(r.recorded_at), "yyyy-MM-dd");
-    if (!meterByDate.has(date)) {
-      meterByDate.set(date, []);
-    }
-    meterByDate.get(date)!.push(r.reading_value);
-  });
+  // Convert RPC result to ReadingPoint format for interpolation
+  const meterAverages: ReadingPoint[] = meterReadingsData.map((r) => ({
+    date: r.date,
+    value: r.total_usage,
+  }));
 
+  // Group chlorine readings by date and calculate daily averages
   const chlorineByDate = new Map<string, number[]>();
   chlorineReadings?.forEach((r) => {
     const date = format(parseISO(r.recorded_at), "yyyy-MM-dd");
@@ -176,13 +160,6 @@ export async function getMonthlyReportData(
       chlorineByDate.set(date, []);
     }
     chlorineByDate.get(date)!.push(r.residual_level);
-  });
-
-  // Calculate averages for dates with readings
-  const meterAverages: ReadingPoint[] = [];
-  meterByDate.forEach((values, date) => {
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
-    meterAverages.push({ date, value: avg });
   });
 
   const chlorineAverages: ReadingPoint[] = [];

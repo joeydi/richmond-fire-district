@@ -34,7 +34,8 @@ export interface RecentReading {
 
 export async function getDailyUsage(
   startDate: Date | string,
-  endDate: Date | string
+  endDate: Date | string,
+  meterId?: string
 ): Promise<DailyUsage[]> {
   const supabase = await createClient();
 
@@ -52,6 +53,7 @@ export async function getDailyUsage(
     .rpc("get_daily_usage", {
       start_date: startStr,
       end_date: endStr,
+      meter_id_param: meterId ?? null,
     })
     .limit(10000); // Override Supabase's default 1000 row limit
 
