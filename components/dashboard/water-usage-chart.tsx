@@ -468,21 +468,30 @@ function calculateTrendline(data: GroupedRateData[]): number[] {
     return data.map((d) => d.rate);
   }
 
-  // Use index as x value (0, 1, 2, ...) for simplicity
-  const xValues = data.map((_, i) => i);
-  const yValues = data.map((d) => d.rate);
+  // Filter out zero-rate days (meter/pump outages) from regression calculation
+  const validPoints = data
+    .map((d, i) => ({ index: i, rate: d.rate }))
+    .filter((p) => p.rate > 0);
 
-  // Calculate means
-  const xMean = xValues.reduce((a, b) => a + b, 0) / n;
-  const yMean = yValues.reduce((a, b) => a + b, 0) / n;
+  // If no valid points or only one, return flat line at average of valid rates
+  if (validPoints.length < 2) {
+    const avgRate = validPoints.length > 0 ? validPoints[0].rate : 0;
+    return data.map(() => avgRate);
+  }
 
-  // Calculate slope and intercept using least squares
+  // Calculate means using only valid (non-zero) points
+  const xMean =
+    validPoints.reduce((a, p) => a + p.index, 0) / validPoints.length;
+  const yMean =
+    validPoints.reduce((a, p) => a + p.rate, 0) / validPoints.length;
+
+  // Calculate slope and intercept using least squares on valid points
   let numerator = 0;
   let denominator = 0;
 
-  for (let i = 0; i < n; i++) {
-    const xDiff = xValues[i] - xMean;
-    const yDiff = yValues[i] - yMean;
+  for (const point of validPoints) {
+    const xDiff = point.index - xMean;
+    const yDiff = point.rate - yMean;
     numerator += xDiff * yDiff;
     denominator += xDiff * xDiff;
   }
@@ -490,6 +499,6 @@ function calculateTrendline(data: GroupedRateData[]): number[] {
   const slope = denominator !== 0 ? numerator / denominator : 0;
   const intercept = yMean - slope * xMean;
 
-  // Generate trendline values
-  return xValues.map((x) => Math.max(0, slope * x + intercept));
+  // Generate trendline values for ALL positions (including zeros for visual continuity)
+  return data.map((_, i) => Math.max(0, slope * i + intercept));
 }
