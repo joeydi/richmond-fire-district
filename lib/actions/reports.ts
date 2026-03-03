@@ -171,9 +171,19 @@ export async function getMonthlyReportData(
   // Get all days in the month
   const allDates = getDaysInMonth(month);
 
+  // Include carry total as a data point so interpolation anchors to it
+  const meterReadingsForInterpolation = [...meterAverages];
+  if (carryTotal !== null) {
+    const prevMonthDates = getDaysInMonth(prevMonth);
+    meterReadingsForInterpolation.unshift({
+      date: prevMonthDates[prevMonthDates.length - 1],
+      value: carryTotal,
+    });
+  }
+
   // Interpolate missing days
   const interpolatedMeter = interpolateMissingDays(
-    meterAverages,
+    meterReadingsForInterpolation,
     allDates,
     true // Add variation for meter readings
   );
@@ -187,6 +197,14 @@ export async function getMonthlyReportData(
   const hasMeterData = meterAverages.length > 0;
   const hasChlorineData = chlorineAverages.length > 0;
 
+  // Find the last actual reading dates (don't interpolate/extrapolate beyond these)
+  const lastActualMeterDate = meterAverages.length > 0
+    ? meterAverages.reduce((latest, r) => r.date > latest ? r.date : latest, meterAverages[0].date)
+    : null;
+  const lastActualChlorineDate = chlorineAverages.length > 0
+    ? chlorineAverages.reduce((latest, r) => r.date > latest ? r.date : latest, chlorineAverages[0].date)
+    : null;
+
   // Get today's date for comparison (no estimations for future dates)
   const today = format(new Date(), "yyyy-MM-dd");
 
@@ -196,9 +214,11 @@ export async function getMonthlyReportData(
     const chlorineData = interpolatedChlorine[index];
     const isFutureDate = date > today;
 
-    // For future dates, only show actual data (not interpolated)
-    const showMeterData = hasMeterData && (!isFutureDate || !meterData.isInterpolated);
-    const showChlorineData = hasChlorineData && (!isFutureDate || !chlorineData.isInterpolated);
+    // Don't show interpolated data for future dates or dates after last actual reading
+    const isAfterLastMeterReading = lastActualMeterDate !== null && date > lastActualMeterDate && meterData.isInterpolated;
+    const isAfterLastChlorineReading = lastActualChlorineDate !== null && date > lastActualChlorineDate && chlorineData.isInterpolated;
+    const showMeterData = hasMeterData && (!isFutureDate || !meterData.isInterpolated) && !isAfterLastMeterReading;
+    const showChlorineData = hasChlorineData && (!isFutureDate || !chlorineData.isInterpolated) && !isAfterLastChlorineReading;
 
     // Calculate daily usage (difference from previous day or carry total)
     let dailyUsage: number | null = null;
@@ -218,7 +238,8 @@ export async function getMonthlyReportData(
         const prevMeterData = interpolatedMeter[index - 1];
         const prevDate = allDates[index - 1];
         const prevIsFutureDate = prevDate > today;
-        const showPrevMeterData = hasMeterData && (!prevIsFutureDate || !prevMeterData.isInterpolated);
+        const prevIsAfterLastReading = lastActualMeterDate !== null && prevDate > lastActualMeterDate && prevMeterData.isInterpolated;
+        const showPrevMeterData = hasMeterData && (!prevIsFutureDate || !prevMeterData.isInterpolated) && !prevIsAfterLastReading;
 
         if (showPrevMeterData) {
           dailyUsage = Math.round(meterData.value - prevMeterData.value);
