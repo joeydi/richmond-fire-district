@@ -98,6 +98,7 @@ export async function getMonthlyReportData(
   // Calculate date range for the month
   const monthStart = startOfMonth(parseISO(`${month}-01`));
   const nextMonth = format(addMonths(monthStart, 1), "yyyy-MM");
+  const nextNextMonth = format(addMonths(monthStart, 2), "yyyy-MM");
   const prevMonth = format(addMonths(monthStart, -1), "yyyy-MM");
 
   // Fetch meter readings via RPC (already grouped and averaged by day)
@@ -114,6 +115,38 @@ export async function getMonthlyReportData(
     .gte("recorded_at", `${month}-01T00:00:00`)
     .lt("recorded_at", `${nextMonth}-01T00:00:00`)
     .order("recorded_at");
+
+  // Fetch next month's first meter reading as forward anchor for interpolation
+  const nextMeterReadingsData = await getDailyUsage(
+    `${nextMonth}-01`,
+    `${nextNextMonth}-01`,
+    meterId
+  );
+  const nextMeterAnchor: ReadingPoint | null =
+    nextMeterReadingsData.length > 0
+      ? { date: nextMeterReadingsData[0].date, value: nextMeterReadingsData[0].total_usage }
+      : null;
+
+  // Fetch next month's first chlorine reading as forward anchor for interpolation
+  const { data: nextChlorineReadings } = await supabase
+    .from("chlorine_readings")
+    .select("residual_level, recorded_at")
+    .gte("recorded_at", `${nextMonth}-01T00:00:00`)
+    .order("recorded_at", { ascending: true })
+    .limit(10);
+
+  let nextChlorineAnchor: ReadingPoint | null = null;
+  if (nextChlorineReadings && nextChlorineReadings.length > 0) {
+    // Group by the earliest date and average
+    const firstDate = format(parseISO(nextChlorineReadings[0].recorded_at), "yyyy-MM-dd");
+    const sameDateReadings = nextChlorineReadings.filter(
+      (r) => format(parseISO(r.recorded_at), "yyyy-MM-dd") === firstDate
+    );
+    const avg =
+      sameDateReadings.reduce((sum, r) => sum + r.residual_level, 0) /
+      sameDateReadings.length;
+    nextChlorineAnchor = { date: firstDate, value: avg };
+  }
 
   // Fetch previous month's meter readings to calculate carry total
   const prevMeterReadingsData = await getDailyUsage(
@@ -181,6 +214,16 @@ export async function getMonthlyReportData(
     });
   }
 
+  // Include next month's first reading as forward anchor for interpolation
+  if (nextMeterAnchor) {
+    meterReadingsForInterpolation.push(nextMeterAnchor);
+  }
+
+  const chlorineReadingsForInterpolation = [...chlorineAverages];
+  if (nextChlorineAnchor) {
+    chlorineReadingsForInterpolation.push(nextChlorineAnchor);
+  }
+
   // Interpolate missing days
   const interpolatedMeter = interpolateMissingDays(
     meterReadingsForInterpolation,
@@ -188,7 +231,7 @@ export async function getMonthlyReportData(
     true // Add variation for meter readings
   );
   const interpolatedChlorine = interpolateMissingDays(
-    chlorineAverages,
+    chlorineReadingsForInterpolation,
     allDates,
     false // No variation for chlorine
   );
@@ -214,9 +257,9 @@ export async function getMonthlyReportData(
     const chlorineData = interpolatedChlorine[index];
     const isFutureDate = date > today;
 
-    // Don't show interpolated data for future dates or dates after last actual reading
-    const isAfterLastMeterReading = lastActualMeterDate !== null && date > lastActualMeterDate && meterData.isInterpolated;
-    const isAfterLastChlorineReading = lastActualChlorineDate !== null && date > lastActualChlorineDate && chlorineData.isInterpolated;
+    // Don't show interpolated data for future dates or dates after last actual reading (unless there's a forward anchor)
+    const isAfterLastMeterReading = !nextMeterAnchor && lastActualMeterDate !== null && date > lastActualMeterDate && meterData.isInterpolated;
+    const isAfterLastChlorineReading = !nextChlorineAnchor && lastActualChlorineDate !== null && date > lastActualChlorineDate && chlorineData.isInterpolated;
     const showMeterData = hasMeterData && (!isFutureDate || !meterData.isInterpolated) && !isAfterLastMeterReading;
     const showChlorineData = hasChlorineData && (!isFutureDate || !chlorineData.isInterpolated) && !isAfterLastChlorineReading;
 
@@ -238,7 +281,7 @@ export async function getMonthlyReportData(
         const prevMeterData = interpolatedMeter[index - 1];
         const prevDate = allDates[index - 1];
         const prevIsFutureDate = prevDate > today;
-        const prevIsAfterLastReading = lastActualMeterDate !== null && prevDate > lastActualMeterDate && prevMeterData.isInterpolated;
+        const prevIsAfterLastReading = !nextMeterAnchor && lastActualMeterDate !== null && prevDate > lastActualMeterDate && prevMeterData.isInterpolated;
         const showPrevMeterData = hasMeterData && (!prevIsFutureDate || !prevMeterData.isInterpolated) && !prevIsAfterLastReading;
 
         if (showPrevMeterData) {
