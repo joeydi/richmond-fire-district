@@ -340,7 +340,7 @@ export async function acceptInterpolatedMeterReading(input: {
     meter_id: input.meterId,
     reading_value: input.value,
     recorded_at: recordedAt,
-    notes: "Auto-accepted from report interpolation",
+    interpolated: true,
     created_by: user.id,
   });
 
@@ -371,7 +371,7 @@ export async function acceptInterpolatedChlorineReading(input: {
     location_id: null,
     residual_level: input.value,
     recorded_at: recordedAt,
-    notes: "Auto-accepted from report interpolation",
+    interpolated: true,
     created_by: user.id,
   });
 

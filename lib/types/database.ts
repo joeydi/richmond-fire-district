@@ -48,6 +48,7 @@ export interface MeterReading {
   reading_value: number;
   production_rate: number | null;
   notes: string | null;
+  interpolated: boolean;
   created_by: string | null;
   created_at: string;
 }
@@ -58,6 +59,7 @@ export interface ChlorineReading {
   location_id: string | null;
   residual_level: number;
   notes: string | null;
+  interpolated: boolean;
   created_by: string | null;
   created_at: string;
 }

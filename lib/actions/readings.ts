@@ -223,6 +223,7 @@ export interface MeterReadingRow {
   production_rate: number | null;
   recorded_at: string;
   notes: string | null;
+  interpolated: boolean;
   meter_name: string | null;
 }
 
@@ -232,6 +233,7 @@ export interface ChlorineReadingRow {
   residual_level: number;
   recorded_at: string;
   notes: string | null;
+  interpolated: boolean;
   location_name: string | null;
 }
 
@@ -254,7 +256,7 @@ export async function getMeterReadingsHistory(
   const { data, count, error } = await supabase
     .from("meter_readings")
     .select(
-      "id, meter_id, reading_value, production_rate, recorded_at, notes, meters (name)",
+      "id, meter_id, reading_value, production_rate, recorded_at, notes, interpolated, meters (name)",
       {
         count: "exact",
       }
@@ -274,6 +276,7 @@ export async function getMeterReadingsHistory(
     production_rate: r.production_rate,
     recorded_at: r.recorded_at,
     notes: r.notes,
+    interpolated: r.interpolated ?? false,
     meter_name: r.meters?.name ?? null,
   }));
 
@@ -288,7 +291,7 @@ export async function getChlorineReadingsHistory(
 
   const { data, count, error } = await supabase
     .from("chlorine_readings")
-    .select("id, location_id, residual_level, recorded_at, notes, infrastructure_points (name)", {
+    .select("id, location_id, residual_level, recorded_at, notes, interpolated, infrastructure_points (name)", {
       count: "exact",
     })
     .order("recorded_at", { ascending: false })
@@ -305,6 +308,7 @@ export async function getChlorineReadingsHistory(
     residual_level: r.residual_level,
     recorded_at: r.recorded_at,
     notes: r.notes,
+    interpolated: r.interpolated ?? false,
     location_name: r.infrastructure_points?.name ?? null,
   }));
 
