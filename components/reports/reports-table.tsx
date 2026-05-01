@@ -68,7 +68,13 @@ export function ReportsTable({
             </TableCell>
           </TableRow>
 
-          {days.map((day) => (
+          {days.map((day) => {
+            const chlorineDisplay =
+              day.chlorineAverage !== null && day.isChlorineInterpolated
+                ? Math.round(day.chlorineAverage / 0.2) * 0.2
+                : day.chlorineAverage;
+
+            return (
             <TableRow key={day.date}>
               <TableCell className="font-medium">{day.date}</TableCell>
 
@@ -144,7 +150,7 @@ export function ReportsTable({
                 <div className="flex items-center justify-end gap-2">
                   {day.chlorineAverage !== null ? (
                     <>
-                      <span>{day.chlorineAverage.toFixed(2)}</span>
+                      <span>{chlorineDisplay!.toFixed(2)}</span>
                       {day.isChlorineInterpolated && (
                         <>
                           <Badge
@@ -157,7 +163,7 @@ export function ReportsTable({
                             <AcceptValueButton
                               type="chlorine"
                               date={day.date}
-                              value={day.chlorineAverage}
+                              value={chlorineDisplay!}
                             />
                           )}
                         </>
@@ -169,7 +175,8 @@ export function ReportsTable({
                 </div>
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
     </div>
