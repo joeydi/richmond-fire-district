@@ -10,8 +10,18 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, Droplets, ScanEye } from "lucide-react";
+import { Camera, ChevronDown, Droplets } from "lucide-react";
 import { CameraCapture } from "./camera-capture";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -42,7 +52,45 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
   const [loading, setLoading] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [capturedAt, setCapturedAt] = useState<string | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"close" | "retake" | null>(
+    null
+  );
   const router = useRouter();
+
+  const handleCaptured = (dataUrl: string, ts: string) => {
+    setCapturedImage(dataUrl);
+    setCapturedAt(ts);
+  };
+
+  const doRetake = () => {
+    setCapturedImage(null);
+    setCapturedAt(null);
+  };
+
+  const closeCamera = () => {
+    setShowCamera(false);
+    setCapturedImage(null);
+    setCapturedAt(null);
+  };
+
+  // Leaving a displayed capture clears its timestamp. If the user has entered a
+  // value (read from the photo), confirm first so the timestamp isn't lost.
+  const requestClose = () => {
+    if (capturedImage && readingValue) {
+      setConfirmAction("close");
+    } else {
+      closeCamera();
+    }
+  };
+
+  const requestRetake = () => {
+    if (capturedImage && readingValue) {
+      setConfirmAction("retake");
+    } else {
+      doRetake();
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +121,7 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
   };
 
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Meter Reading</CardTitle>
@@ -109,10 +158,10 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
                 type="button"
                 variant="outline"
                 size="icon"
-                onClick={() => setShowCamera(!showCamera)}
+                onClick={() => (showCamera ? requestClose() : setShowCamera(true))}
                 className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
               >
-                <ScanEye className="h-8 w-8" />
+                <Camera className="h-8 w-8" />
               </Button>
             </div>
             <Input
@@ -130,11 +179,10 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
             />
             {showCamera && (
               <CameraCapture
-                onReadingDetected={(reading, timestamp) => {
-                  setReadingValue(reading);
-                  setCapturedAt(timestamp);
-                }}
-                onClose={() => setShowCamera(false)}
+                capturedImage={capturedImage}
+                onCapture={handleCaptured}
+                onRequestRetake={requestRetake}
+                onRequestClose={requestClose}
               />
             )}
           </div>
@@ -166,5 +214,39 @@ export function MeterReadingForm({ meters, lastReadings }: MeterReadingFormProps
         </form>
       </CardContent>
     </Card>
+
+    <AlertDialog
+      open={confirmAction !== null}
+      onOpenChange={(open) => {
+        if (!open) setConfirmAction(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard the capture time?</AlertDialogTitle>
+          <AlertDialogDescription>
+            You&apos;ve entered a reading value from the captured image. Leaving
+            this capture will clear its timestamp, so the reading would be saved
+            with the current time instead.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (confirmAction === "close") {
+                closeCamera();
+              } else {
+                doRetake();
+              }
+              setConfirmAction(null);
+            }}
+          >
+            Discard
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
