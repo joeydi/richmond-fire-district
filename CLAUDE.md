@@ -217,6 +217,36 @@ import { createClient } from "@/lib/supabase/server";
 - `log_posts` - Activity logs with rich text
 - `log_post_images` - Images for log posts
 
+### PostGIS in `public`
+
+**PostGIS lives in the `extensions` schema, not `public`.** Migration 003
+originally installed it into `public`, which exposed `spatial_ref_sys` (the EPSG
+catalog) through PostgREST and tripped the "RLS Disabled in Public" advisor.
+Migration 015 tried to enable RLS / revoke grants on that table and was refused —
+it is owned by `supabase_admin`, not `postgres`. Migration 016 relocated the
+extension instead, which removed it from the API surface entirely.
+
+What this means for new code:
+
+- **`parcels.geometry` is typed `extensions.geometry(MultiPolygon, 4326)`.**
+- **Any `SECURITY DEFINER` function using `ST_*` must declare
+  `SET search_path = public, extensions`.** `SECURITY DEFINER` does not set
+  search_path on its own, and `anon`/`authenticated` have no search_path
+  setting — they fall back to `"$user", public` and will not find PostGIS.
+  `get_parcels_in_viewport` and `get_parcel_by_id` both do this.
+- Ad-hoc SQL run as `postgres` works unqualified (its search_path includes
+  `extensions`); elsewhere, schema-qualify as `extensions.ST_Intersects(...)`.
+- PostGIS is non-relocatable, so 016 had to `DROP EXTENSION postgis CASCADE`
+  (which cascades to `parcels.geometry`) and recreate it. Geometries were staged
+  in-database as EWKB and restored — no VCGI re-import was needed. If this ever
+  has to be redone, stage as EWKB rather than GeoJSON: `ST_AsGeoJSON` rounds to
+  9 decimal places, EWKB is lossless.
+- Inserting parcels still works by passing GeoJSON text: there is a
+  `text → geometry` cast and `geometry_in` parses GeoJSON, yielding SRID 4326.
+  This is how `scripts/import-parcels.ts` writes through PostgREST.
+- 5 parcels have self-intersecting polygons and fail `ST_IsValid`. This is
+  pre-existing VCGI source data, not migration damage.
+
 ### Enums
 ```sql
 user_role: admin | editor | member
