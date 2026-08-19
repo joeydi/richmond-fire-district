@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Table,
@@ -28,6 +29,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  FileText,
 } from "lucide-react";
 import type { InfrastructurePoint, InfrastructureType } from "@/lib/types/infrastructure";
 import {
@@ -172,18 +174,27 @@ export function InfrastructureTable({
           </Button>
         </form>
 
-        <Select value={typeFilter || "all"} onValueChange={handleTypeChange}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Filter by type" />
-          </SelectTrigger>
-          <SelectContent>
-            {typeOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={typeFilter || "all"} onValueChange={handleTypeChange}>
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="Filter by type" />
+            </SelectTrigger>
+            <SelectContent>
+              {typeOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/infrastructure/report">
+              <FileText className="mr-2 h-4 w-4" />
+              Infrastructure Report
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Table */}

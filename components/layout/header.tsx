@@ -18,6 +18,7 @@ const TITLE_MAP: Record<string, string> = {
   "/dashboard/reports": "Reports",
   "/dashboard/map": "System Map",
   "/dashboard/infrastructure": "Infrastructure Points",
+  "/dashboard/infrastructure/report": "Infrastructure Report",
   "/dashboard/admin/users": "User Management",
   "/dashboard/account": "Account Settings",
   "/dashboard/notifications": "Notifications",
