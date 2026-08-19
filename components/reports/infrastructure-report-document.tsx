@@ -26,14 +26,14 @@ const ORGANIZATION = "Richmond Fire District #1 - WSID 5426";
 const styles = StyleSheet.create({
   page: {
     paddingTop: 48,
-    paddingBottom: 56,
+    paddingBottom: 48,
     paddingHorizontal: 48,
     fontFamily: "Helvetica",
     fontSize: 10,
     color: "#0f172a",
   },
   cover: {
-    marginBottom: 28,
+    marginBottom: 16,
     paddingBottom: 16,
     borderBottomWidth: 2,
     borderBottomColor: "#0f172a",
@@ -80,8 +80,9 @@ const styles = StyleSheet.create({
     color: "#64748b",
   },
   card: {
-    marginBottom: 14,
-    padding: 12,
+    marginBottom: 8,
+    padding: 8,
+    paddingBottom: 0,
     borderWidth: 1,
     borderColor: "#e2e8f0",
     borderRadius: 4,
@@ -97,7 +98,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   detail: {
-    width: "50%",
+    width: "25%",
     marginBottom: 6,
     paddingRight: 10,
   },
@@ -114,6 +115,7 @@ const styles = StyleSheet.create({
   },
   notes: {
     marginTop: 4,
+    marginBottom: 8,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
@@ -141,11 +143,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e2e8f0",
     borderRadius: 3,
-  },
-  photoCaption: {
-    marginTop: 3,
-    fontSize: 7,
-    color: "#94a3b8",
   },
   emptyNote: {
     fontSize: 9,
@@ -249,7 +246,7 @@ function PointCard({
     // further pages. The summary block below is atomic: without it react-pdf
     // will happily break between the title and the details, which leaves an
     // empty bordered stub at the foot of the page.
-    <View style={styles.card}>
+    <View style={styles.card} wrap={Boolean(point.images.length > 2 || notes)}>
       <View wrap={false}>
         <Text style={styles.cardTitle}>{point.name}</Text>
 
@@ -293,13 +290,10 @@ function PointCard({
 
       {point.images.length > 0 ? (
         <View style={styles.photoGrid}>
-          {point.images.map((image, index) => (
+          {point.images.map((image) => (
             <View key={image.id} style={styles.photoCell} wrap={false}>
               {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image, not an <img> */}
               <Image style={styles.photo} src={image.url} />
-              <Text style={styles.photoCaption}>
-                Photo {index + 1} of {point.images.length}
-              </Text>
             </View>
           ))}
         </View>
