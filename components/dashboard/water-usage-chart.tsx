@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
+import { Download } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -42,6 +45,7 @@ export function WaterUsageChart({
   const [range, setRange] = useState<DateRange>("30d");
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
+  const chartRef = useRef<ReactECharts>(null);
 
   const { filteredData, dateRange } = filterDataByRange(
     data,
@@ -214,6 +218,48 @@ export function WaterUsageChart({
     setRange(value as DateRange);
   };
 
+  const handleExportPng = async () => {
+    const instance = chartRef.current?.getEchartsInstance();
+    if (!instance) return;
+
+    try {
+      // The chart uses the SVG renderer, so getDataURL returns an SVG data URI.
+      // Rasterize it through a canvas to produce a PNG.
+      const svgUrl = instance.getDataURL({ type: "svg" });
+
+      const image = await loadImage(svgUrl);
+
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = instance.getWidth() * scale;
+      canvas.height = instance.getHeight() * scale;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas context unavailable");
+
+      // The SVG background is transparent; fill white so the PNG reads well
+      // when pasted into a document.
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png")
+      );
+      if (!blob) throw new Error("Could not encode PNG");
+
+      const fileName = `water-usage-${format(dateRange.start, "yyyy-MM-dd")}-to-${format(dateRange.end, "yyyy-MM-dd")}.png`;
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      toast.error("Could not export chart");
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2 gap-4 flex-wrap">
@@ -261,6 +307,16 @@ export function WaterUsageChart({
               </div>
             </>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportPng}
+            disabled={filteredData.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="pt-0">
@@ -271,6 +327,7 @@ export function WaterUsageChart({
         ) : (
           <div className="h-[30vw] min-h-[400px]">
             <ReactECharts
+              ref={chartRef}
               option={option}
               style={{ height: "100%", width: "100%" }}
               opts={{ renderer: "svg" }}
@@ -280,6 +337,15 @@ export function WaterUsageChart({
       </CardContent>
     </Card>
   );
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load chart image"));
+    image.src = src;
+  });
 }
 
 interface FilterResult {
