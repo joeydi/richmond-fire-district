@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LocateFixed, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createInfrastructurePoint,
@@ -84,6 +85,7 @@ export function InfrastructureForm({
   onSuccess,
 }: InfrastructureFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const isEditing = !!point;
 
   // Helper to get a valid status for the form (unknown not allowed in form)
@@ -119,6 +121,43 @@ export function InfrastructureForm({
       });
     }
   }, [open, point, initialCoordinates, form]);
+
+  const useCurrentLocation = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      toast.error("Geolocation is not supported by this browser");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        form.setValue("latitude", Number(latitude.toFixed(6)), {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        form.setValue("longitude", Number(longitude.toFixed(6)), {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        setIsLocating(false);
+        toast.success(
+          `Location set (accurate to about ${Math.round(accuracy)} m)`
+        );
+      },
+      (error) => {
+        setIsLocating(false);
+        const messages: Record<number, string> = {
+          [error.PERMISSION_DENIED]:
+            "Location permission denied. Enable it in your browser settings.",
+          [error.POSITION_UNAVAILABLE]: "Location is currently unavailable",
+          [error.TIMEOUT]: "Timed out getting your location",
+        };
+        toast.error(messages[error.code] || "Could not get your location");
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
 
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
@@ -236,6 +275,24 @@ export function InfrastructureForm({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <Label>Coordinates *</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={useCurrentLocation}
+              disabled={isLocating || isSubmitting}
+            >
+              {isLocating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LocateFixed className="h-4 w-4" />
+              )}
+              {isLocating ? "Locating..." : "Use my location"}
+            </Button>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
