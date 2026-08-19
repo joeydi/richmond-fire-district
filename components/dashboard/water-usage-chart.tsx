@@ -254,7 +254,9 @@ export function WaterUsageChart({
       link.href = objectUrl;
       link.download = fileName;
       link.click();
-      URL.revokeObjectURL(objectUrl);
+      // Revoking in the same tick can cancel the download before it starts in
+      // Safari; defer until after the click has been handled.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
     } catch {
       toast.error("Could not export chart");
     }
