@@ -1,10 +1,30 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
-import { Upload, X, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Upload, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { uploadInfrastructureImage } from "@/lib/actions/infrastructure";
+
+const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+
+function formatSize(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function getErrorMessage(error: unknown) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "You appear to be offline. Check your connection and try again.";
+  }
+  if (error instanceof Error) {
+    // Server Actions surface network/transport failures as a generic TypeError
+    if (error.name === "TypeError") {
+      return "Could not reach the server. Check your connection and try again.";
+    }
+    return error.message;
+  }
+  return "Failed to upload image. Please try again.";
+}
 
 interface ImageUploadProps {
   infrastructurePointId: string;
@@ -20,17 +40,35 @@ export function ImageUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastFile, setLastFile] = useState<File | null>(null);
+
+  const fail = useCallback((message: string) => {
+    setError(message);
+    toast.error(message);
+  }, []);
 
   const handleUpload = useCallback(
     async (file: File) => {
-      if (!file.type.startsWith("image/")) {
-        toast.error("Please select an image file");
+      setError(null);
+      setLastFile(file);
+
+      if (!ACCEPTED_TYPES.includes(file.type)) {
+        fail(
+          file.type.startsWith("image/")
+            ? "Unsupported image format. Use JPEG, PNG, or WebP."
+            : "That file isn't an image. Use JPEG, PNG, or WebP."
+        );
         return;
       }
 
-      // Check file size (5MB limit)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Image must be less than 5MB");
+      if (file.size === 0) {
+        fail("That file is empty. Please choose a different image.");
+        return;
+      }
+
+      if (file.size > MAX_SIZE_BYTES) {
+        fail(`Image is ${formatSize(file.size)}. Maximum size is 5MB.`);
         return;
       }
 
@@ -45,13 +83,15 @@ export function ImageUpload({
         );
 
         if (result.error) {
-          toast.error(result.error);
+          fail(result.error);
         } else {
+          setLastFile(null);
           toast.success("Image uploaded successfully");
           onUploadComplete?.();
         }
-      } catch {
-        toast.error("Failed to upload image");
+      } catch (err) {
+        console.error("Error uploading infrastructure image:", err);
+        fail(getErrorMessage(err));
       } finally {
         setIsUploading(false);
         if (fileInputRef.current) {
@@ -59,8 +99,14 @@ export function ImageUpload({
         }
       }
     },
-    [infrastructurePointId, onUploadComplete]
+    [infrastructurePointId, onUploadComplete, fail]
   );
+
+  const handleRetry = useCallback(() => {
+    if (lastFile) {
+      handleUpload(lastFile);
+    }
+  }, [lastFile, handleUpload]);
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,6 +187,28 @@ export function ImageUpload({
               JPEG, PNG, or WebP (max 5MB)
             </p>
           </>
+        )}
+
+        {error && !isUploading && (
+          <div
+            role="alert"
+            className="mt-2 flex w-full items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-left"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+            <div className="flex-1 space-y-1">
+              <p className="text-xs text-red-700">{error}</p>
+              {lastFile && (
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={disabled}
+                  className="text-xs font-medium text-red-700 underline hover:text-red-800"
+                >
+                  Try again
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>
