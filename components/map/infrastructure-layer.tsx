@@ -9,6 +9,11 @@ interface InfrastructureLayerProps {
   map: Map | null;
   points: InfrastructurePoint[];
   visible?: boolean;
+  /**
+   * Name labels appear from zoom 14 up. The report map turns them off so its
+   * output is consistently dots-only, whatever zoom fitBounds settles on.
+   */
+  showLabels?: boolean;
   onPointClick?: (point: InfrastructurePoint) => void;
 }
 
@@ -20,6 +25,7 @@ export function InfrastructureLayer({
   map,
   points,
   visible = true,
+  showLabels = true,
   onPointClick,
 }: InfrastructureLayerProps) {
   useEffect(() => {
@@ -156,9 +162,13 @@ export function InfrastructureLayer({
       map.setLayoutProperty(LAYER_ID, "visibility", visibility);
     }
     if (map.getLayer(LABELS_LAYER_ID)) {
-      map.setLayoutProperty(LABELS_LAYER_ID, "visibility", visibility);
+      map.setLayoutProperty(
+        LABELS_LAYER_ID,
+        "visibility",
+        visible && showLabels ? "visible" : "none"
+      );
     }
-  }, [map, visible]);
+  }, [map, visible, showLabels]);
 
   return null;
 }

@@ -26,9 +26,13 @@ export async function getInfrastructurePoints(): Promise<InfrastructurePoint[]> 
 
 /**
  * Fetch parcels within the given viewport bounds using PostGIS spatial query
+ *
+ * The limit is raised by the infrastructure report, which fits its bounds to
+ * every active point at once rather than to a single interactive viewport.
  */
 export async function getParcelsByViewport(
-  bounds: ViewportBounds
+  bounds: ViewportBounds,
+  limit: number = PARCEL_LIMIT
 ): Promise<Parcel[]> {
   const supabase = await createClient();
 
@@ -39,7 +43,7 @@ export async function getParcelsByViewport(
     min_lat: bounds.minLat,
     max_lng: bounds.maxLng,
     max_lat: bounds.maxLat,
-    limit_count: PARCEL_LIMIT,
+    limit_count: limit,
   });
 
   if (error) {

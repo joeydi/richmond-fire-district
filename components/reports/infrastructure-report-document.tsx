@@ -13,12 +13,16 @@ import {
   INFRASTRUCTURE_COLORS,
   INFRASTRUCTURE_STATUS_LABELS,
 } from "@/lib/types/infrastructure";
+import { REPORT_MAP_ASPECT_RATIO } from "@/lib/pdf/map-bounds";
 import type {
   InfrastructureReportData,
   ReportPoint,
 } from "@/lib/actions/infrastructure-report";
 
 const REPORT_TITLE = "Infrastructure Report";
+/** Letter width (612pt) less the page's horizontal padding. */
+const PAGE_PADDING_X = 48;
+const CONTENT_WIDTH = 612 - PAGE_PADDING_X * 2;
 const ORGANIZATION = "Richmond Fire District #1 - WSID 5426";
 
 // react-pdf ships Helvetica; registering a web font would add a network fetch
@@ -27,7 +31,7 @@ const styles = StyleSheet.create({
   page: {
     paddingTop: 48,
     paddingBottom: 48,
-    paddingHorizontal: 48,
+    paddingHorizontal: PAGE_PADDING_X,
     fontFamily: "Helvetica",
     fontSize: 10,
     color: "#0f172a",
@@ -53,6 +57,53 @@ const styles = StyleSheet.create({
   coverMeta: {
     marginTop: 10,
     fontSize: 10,
+    color: "#475569",
+  },
+  mapImage: {
+    width: CONTENT_WIDTH,
+    // Derived from the capture size so the image can never be squeezed.
+    height: CONTENT_WIDTH / REPORT_MAP_ASPECT_RATIO,
+    objectFit: "cover",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 4,
+  },
+  mapCredit: {
+    marginTop: 4,
+    fontSize: 7,
+    color: "#94a3b8",
+    textAlign: "right",
+  },
+  mapLegend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+    marginBottom: 6,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 5,
+  },
+  legendParcel: {
+    width: 12,
+    height: 0,
+    borderTopWidth: 1.5,
+    // Matches the parcel line colour in components/map/parcels-layer.tsx
+    borderTopColor: "#60A5FA",
+    marginRight: 5,
+  },
+  legendLabel: {
+    fontSize: 9,
     color: "#475569",
   },
   sectionHeader: {
@@ -166,12 +217,32 @@ const styles = StyleSheet.create({
 
 interface InfrastructureReportDocumentProps {
   data: InfrastructureReportData;
+  /** Captured overview map as a data URL; omitted or null renders no map page. */
+  mapImage?: string | null;
 }
 
 export function InfrastructureReportDocument({
   data,
+  mapImage,
 }: InfrastructureReportDocumentProps) {
   const generatedAt = new Date(data.generatedAt);
+
+  const cover = (
+    <View style={styles.cover}>
+      <Text style={styles.coverOrg}>{ORGANIZATION}</Text>
+      <Text style={styles.coverTitle}>{REPORT_TITLE}</Text>
+      <Text style={styles.coverMeta}>
+        Generated {format(generatedAt, "MMMM d, yyyy 'at' h:mm a")}
+      </Text>
+      <Text style={styles.coverMeta}>
+        {data.totalPoints} active {pluralize(data.totalPoints, "point")}
+        {" across "}
+        {data.groups.length} {pluralize(data.groups.length, "category")}
+        {" · "}
+        {data.totalImages} {pluralize(data.totalImages, "photo")}
+      </Text>
+    </View>
+  );
 
   return (
     <Document
@@ -179,21 +250,16 @@ export function InfrastructureReportDocument({
       author={ORGANIZATION}
       subject="Active water system infrastructure"
     >
+      {mapImage ? (
+        <Page size="LETTER" style={styles.page}>
+          {cover}
+          <MapOverview mapImage={mapImage} groups={data.groups} />
+          <ReportFooter />
+        </Page>
+      ) : null}
+
       <Page size="LETTER" style={styles.page}>
-        <View style={styles.cover}>
-          <Text style={styles.coverOrg}>{ORGANIZATION}</Text>
-          <Text style={styles.coverTitle}>{REPORT_TITLE}</Text>
-          <Text style={styles.coverMeta}>
-            Generated {format(generatedAt, "MMMM d, yyyy 'at' h:mm a")}
-          </Text>
-          <Text style={styles.coverMeta}>
-            {data.totalPoints} active {pluralize(data.totalPoints, "point")}
-            {" across "}
-            {data.groups.length} {pluralize(data.groups.length, "category")}
-            {" · "}
-            {data.totalImages} {pluralize(data.totalImages, "photo")}
-          </Text>
-        </View>
+        {mapImage ? null : cover}
 
         {data.groups.map((group) => (
           <View key={group.type}>
@@ -216,19 +282,63 @@ export function InfrastructureReportDocument({
           </View>
         ))}
 
-        <View style={styles.footer} fixed>
-          <Text>
-            {ORGANIZATION} {"—"} {REPORT_TITLE}
-          </Text>
-          <Text
-            fixed
-            render={({ pageNumber, totalPages }) =>
-              `Page ${pageNumber} of ${totalPages}`
-            }
-          />
-        </View>
+        <ReportFooter />
       </Page>
     </Document>
+  );
+}
+
+function ReportFooter() {
+  return (
+    <View style={styles.footer} fixed>
+      <Text>
+        {ORGANIZATION} {"—"} {REPORT_TITLE}
+      </Text>
+      <Text
+        fixed
+        render={({ pageNumber, totalPages }) =>
+          `Page ${pageNumber} of ${totalPages}`
+        }
+      />
+    </View>
+  );
+}
+
+function MapOverview({
+  mapImage,
+  groups,
+}: {
+  mapImage: string;
+  groups: InfrastructureReportData["groups"];
+}) {
+  return (
+    <View>
+      {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image, not an <img> */}
+      <Image style={styles.mapImage} src={mapImage} />
+
+      {/* Mapbox requires attribution on exported imagery, and the map's own
+          attribution control is DOM so it is absent from the capture. */}
+      <Text style={styles.mapCredit}>© Mapbox © OpenStreetMap</Text>
+
+      <View style={styles.mapLegend}>
+        {groups.map((group) => (
+          <View key={group.type} style={styles.legendItem}>
+            <View
+              style={[
+                styles.legendDot,
+                { backgroundColor: INFRASTRUCTURE_COLORS[group.type] },
+              ]}
+            />
+            <Text style={styles.legendLabel}>{group.label}</Text>
+          </View>
+        ))}
+
+        <View style={styles.legendItem}>
+          <View style={styles.legendParcel} />
+          <Text style={styles.legendLabel}>Parcel boundary</Text>
+        </View>
+      </View>
+    </View>
   );
 }
 
