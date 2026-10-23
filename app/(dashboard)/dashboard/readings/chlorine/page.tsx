@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { getChlorineReadingsHistory } from "@/lib/actions/readings";
 import { ChlorineReadingsTable } from "@/components/readings/readings-history-table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { HistoryPage } from "@/components/readings/history-page";
+
+const PAGE_SIZE = 100;
 
 interface ChlorineReadingsPageProps {
   searchParams: Promise<{
@@ -11,72 +10,24 @@ interface ChlorineReadingsPageProps {
   }>;
 }
 
-export default async function ChlorineReadingsPage({
-  searchParams,
-}: ChlorineReadingsPageProps) {
+export default async function ChlorineReadingsPage({ searchParams }: ChlorineReadingsPageProps) {
   const params = await searchParams;
-  const page = parseInt(params.page || "1", 10);
-  const pageSize = 100;
-  const offset = (page - 1) * pageSize;
+  const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
 
   const { data: readings, count } = await getChlorineReadingsHistory({
-    limit: pageSize,
-    offset,
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
   });
 
-  const totalPages = Math.ceil(count / pageSize);
-
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-medium">
-            Chlorine Readings History
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ChlorineReadingsTable readings={readings} />
-
-          {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-between border-t pt-4">
-              <p className="text-sm text-slate-600">
-                Showing {(page - 1) * pageSize + 1} to{" "}
-                {Math.min(page * pageSize, count)} of {count} readings
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                >
-                  <Link
-                    href={`/dashboard/readings/chlorine?page=${page - 1}`}
-                    aria-disabled={page <= 1}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                >
-                  <Link
-                    href={`/dashboard/readings/chlorine?page=${page + 1}`}
-                    aria-disabled={page >= totalPages}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+    <HistoryPage
+      title="Chlorine readings"
+      basePath="/dashboard/readings/chlorine"
+      page={page}
+      pageSize={PAGE_SIZE}
+      count={count}
+    >
+      <ChlorineReadingsTable readings={readings} />
+    </HistoryPage>
   );
 }

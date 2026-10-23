@@ -10,9 +10,9 @@ import { getNavItems } from "./nav-config";
 const TITLE_MAP: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/dashboard/readings": "Readings",
-  "/dashboard/readings/meter": "Meter Reading",
-  "/dashboard/readings/chlorine": "Chlorine Levels",
-  "/dashboard/readings/reservoir": "Reservoir Levels",
+  "/dashboard/readings/meter": "Meter",
+  "/dashboard/readings/chlorine": "Chlorine",
+  "/dashboard/readings/reservoir": "Reservoir",
   "/dashboard/readings/import": "Import Readings",
   "/dashboard/contacts": "Contacts",
   "/dashboard/contacts/new": "Add New Contact",

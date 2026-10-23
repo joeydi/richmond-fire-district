@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import {
   deleteMeterReading,
@@ -21,18 +19,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { getLogDateParts } from "@/components/log/log-dates";
 import {
   MeterReadingRow,
   ChlorineReadingRow,
@@ -48,114 +44,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-interface ReadingsHistoryTableProps {
-  meterReadings: MeterReadingRow[];
-  meterCount: number;
-  chlorineReadings: ChlorineReadingRow[];
-  chlorineCount: number;
-  reservoirReadings: ReservoirReadingRow[];
-  reservoirCount: number;
-  currentPage: number;
-  pageSize: number;
-}
-
-export function ReadingsHistoryTable({
-  meterReadings,
-  meterCount,
-  chlorineReadings,
-  chlorineCount,
-  reservoirReadings,
-  reservoirCount,
-  currentPage,
-  pageSize,
-}: ReadingsHistoryTableProps) {
-  const [activeTab, setActiveTab] = useState("meter");
-  const router = useRouter();
-
-  const getCount = () => {
-    switch (activeTab) {
-      case "meter":
-        return meterCount;
-      case "chlorine":
-        return chlorineCount;
-      case "reservoir":
-        return reservoirCount;
-      default:
-        return 0;
-    }
-  };
-
-  const totalPages = Math.ceil(getCount() / pageSize);
-
-  const handlePageChange = (newPage: number) => {
-    router.push(`/dashboard/readings?page=${newPage}`);
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg font-medium">Readings History</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="w-full"
-        >
-          <TabsList className="mb-4">
-            <TabsTrigger value="meter">Meter</TabsTrigger>
-            <TabsTrigger value="chlorine">Chlorine</TabsTrigger>
-            <TabsTrigger value="reservoir">Reservoir</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="meter">
-            <MeterReadingsTable readings={meterReadings} />
-          </TabsContent>
-
-          <TabsContent value="chlorine">
-            <ChlorineReadingsTable readings={chlorineReadings} />
-          </TabsContent>
-
-          <TabsContent value="reservoir">
-            <ReservoirReadingsTable readings={reservoirReadings} />
-          </TabsContent>
-        </Tabs>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="mt-6 flex items-center justify-between border-t pt-4">
-            <p className="text-sm text-slate-600">
-              Showing {(currentPage - 1) * pageSize + 1} to{" "}
-              {Math.min(currentPage * pageSize, getCount())} of {getCount()}{" "}
-              readings
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage <= 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage >= totalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 // Helper to convert ISO datetime to local datetime-local input format
 function toLocalDateTimeString(isoString: string): string {
   const date = new Date(isoString);
@@ -163,6 +51,104 @@ function toLocalDateTimeString(isoString: string): string {
   const localDate = new Date(date.getTime() - offset * 60 * 1000);
   return localDate.toISOString().slice(0, 16);
 }
+
+// Thresholds match the dashboard and alerts
+const CHLORINE_MIN = 0.2;
+const CHLORINE_MAX = 4.0;
+
+const thClass =
+  "border-b bg-zinc-50 px-2 py-1.5 text-left font-mono text-[10px] font-medium tracking-[0.06em] whitespace-nowrap text-muted-foreground uppercase first:pl-4 last:pr-4";
+const tdClass = "px-2 py-[7px] first:pl-4 last:pr-4";
+
+function HistoryTable({ children }: { children: React.ReactNode }) {
+  // relative keeps sr-only header labels inside the scroll box
+  return (
+    <div className="relative overflow-x-auto">
+      <table className="w-full border-collapse text-xs">{children}</table>
+    </div>
+  );
+}
+
+function EmptyHistory({ children }: { children: React.ReactNode }) {
+  return <p className="px-4 py-12 text-center text-xs text-muted-foreground">{children}</p>;
+}
+
+function DateCell({ iso }: { iso: string }) {
+  const { date, time } = getLogDateParts(iso);
+  return (
+    <td className={cn(tdClass, "font-mono whitespace-nowrap text-zinc-700")}>
+      {date} <span className="text-muted-foreground">{time}</span>
+    </td>
+  );
+}
+
+function NotesCell({ notes }: { notes: string | null }) {
+  return (
+    <td className={cn(tdClass, "max-w-[280px] truncate text-zinc-700")} title={notes ?? undefined}>
+      {notes ?? <span className="text-muted-foreground">—</span>}
+    </td>
+  );
+}
+
+function Flag({ children, title, tone = "muted" }: { children: React.ReactNode; title: string; tone?: "muted" | "brand" }) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "rounded-sm px-1 font-mono text-[10px] whitespace-nowrap",
+        tone === "brand" ? "bg-brand/10 text-cyan-900" : "bg-muted text-zinc-600"
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function RowActions({
+  label,
+  disabled,
+  onEdit,
+  onDelete,
+}: {
+  label: string;
+  disabled: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <td className={cn(tdClass, "w-16 py-0")}>
+      <div className="flex justify-end gap-0.5 transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 text-muted-foreground"
+          onClick={onEdit}
+          disabled={disabled}
+          title={`Edit ${label}`}
+        >
+          <Pencil className="size-3" />
+          <span className="sr-only">Edit {label}</span>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" disabled={disabled}>
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">More actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onClick={onDelete} className="cursor-pointer text-red-600 focus:text-red-600">
+              <Trash2 className="mr-2 size-4" />
+              Delete reading
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </td>
+  );
+}
+
+const rowClass = "group border-b border-zinc-100 transition-colors hover:bg-zinc-50/70";
 
 export function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }) {
   const [isPending, startTransition] = useTransition();
@@ -215,68 +201,80 @@ export function MeterReadingsTable({ readings }: { readings: MeterReadingRow[] }
   };
 
   if (readings.length === 0) {
-    return (
-      <p className="text-center text-sm text-slate-500 py-8">
-        No meter readings recorded yet
-      </p>
-    );
+    return <EmptyHistory>No meter readings recorded yet</EmptyHistory>;
   }
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Meter</TableHead>
-            <TableHead className="text-right">Reading (gal)</TableHead>
-            <TableHead className="text-right">Rate (gpm)</TableHead>
-            <TableHead>Notes</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {readings.map((reading) => (
-            <TableRow key={reading.id}>
-              <TableCell>
-                {format(new Date(reading.recorded_at), "MMM d, yyyy h:mm a")}
-              </TableCell>
-              <TableCell>{reading.meter_name ?? "—"}</TableCell>
-              <TableCell className="text-right">
-                {reading.reading_value.toLocaleString()}
-              </TableCell>
-              <TableCell className="text-right">
-                {reading.production_rate != null
-                  ? reading.production_rate.toFixed(2)
-                  : "—"}
-              </TableCell>
-              <TableCell className="max-w-[200px] truncate">
-                {reading.notes ?? "—"}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => openEditDialog(reading)}
-                    disabled={isPending}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setReadingToDelete(reading.id)}
-                    disabled={isPending}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-600" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <HistoryTable>
+        <thead>
+          <tr>
+            <th className={thClass}>Date</th>
+            <th className={thClass}>Meter</th>
+            <th className={cn(thClass, "text-right")}>Reading · gal</th>
+            <th className={cn(thClass, "text-right")} title="Gallons since this meter's previous reading">
+              Δ gal
+            </th>
+            <th className={cn(thClass, "text-right")} title="Pump flow from back-to-back readings">
+              Rate · gpm
+            </th>
+            <th className={thClass}>Notes</th>
+            <th className={thClass}>
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {readings.map((reading, i) => {
+            // Readings are newest first; the previous one for this meter is further down
+            const previous = readings.slice(i + 1).find((r) => r.meter_id === reading.meter_id);
+            const delta = previous ? reading.reading_value - previous.reading_value : null;
+            return (
+              <tr key={reading.id} className={rowClass}>
+                <DateCell iso={reading.recorded_at} />
+                <td className={cn(tdClass, "whitespace-nowrap")}>{reading.meter_name ?? "—"}</td>
+                <td className={cn(tdClass, "text-right")}>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span className="font-mono whitespace-nowrap">
+                      {reading.reading_value.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                </td>
+                <td
+                  className={cn(
+                    tdClass,
+                    "text-right font-mono whitespace-nowrap text-zinc-600",
+                    delta !== null && delta < 0 && "text-amber-700"
+                  )}
+                >
+                  {delta === null
+                    ? "—"
+                    : `${delta >= 0 ? "+" : "−"}${Math.abs(delta).toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+                </td>
+                <td className={cn(tdClass, "text-right")}>
+                  {reading.production_rate != null ? (
+                    <Flag tone="brand" title="Pump flow from back-to-back readings">
+                      {reading.production_rate.toFixed(2)}
+                    </Flag>
+                  ) : (
+                    <span className="font-mono text-muted-foreground">—</span>
+                  )}
+                </td>
+                <NotesCell notes={reading.notes} />
+                <RowActions
+                  label="meter reading"
+                  disabled={isPending}
+                  onEdit={() => openEditDialog(reading)}
+                  onDelete={() => setReadingToDelete(reading.id)}
+                />
+              </tr>
+            );
+          })}
+        </tbody>
+      </HistoryTable>
 
       {/* Edit Dialog */}
       <Dialog open={readingToEdit !== null} onOpenChange={(open) => !open && setReadingToEdit(null)}>
@@ -405,62 +403,70 @@ export function ChlorineReadingsTable({
   };
 
   if (readings.length === 0) {
-    return (
-      <p className="text-center text-sm text-slate-500 py-8">
-        No chlorine readings recorded yet
-      </p>
-    );
+    return <EmptyHistory>No chlorine readings recorded yet</EmptyHistory>;
   }
+
+  // Most chlorine readings have no sampling location; only show the column when used
+  const showLocation = readings.some((r) => r.location_name);
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Location</TableHead>
-            <TableHead className="text-right">Level (mg/L)</TableHead>
-            <TableHead>Notes</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {readings.map((reading) => (
-            <TableRow key={reading.id}>
-              <TableCell>
-                {format(new Date(reading.recorded_at), "MMM d, yyyy h:mm a")}
-              </TableCell>
-              <TableCell>{reading.location_name ?? "—"}</TableCell>
-              <TableCell className="text-right">
-                {reading.residual_level.toFixed(2)}
-              </TableCell>
-              <TableCell className="max-w-[200px] truncate">
-                {reading.notes ?? "—"}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => openEditDialog(reading)}
-                    disabled={isPending}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setReadingToDelete(reading.id)}
-                    disabled={isPending}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-600" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <HistoryTable>
+        <thead>
+          <tr>
+            <th className={thClass}>Date</th>
+            {showLocation && <th className={thClass}>Location</th>}
+            <th className={cn(thClass, "text-right")}>Residual · mg/L</th>
+            <th className={thClass}>Range</th>
+            <th className={thClass}>Notes</th>
+            <th className={thClass}>
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {readings.map((reading) => {
+            const level = reading.residual_level;
+            const status =
+              level < CHLORINE_MIN ? "low" : level > CHLORINE_MAX ? "high" : "ok";
+            return (
+              <tr key={reading.id} className={rowClass}>
+                <DateCell iso={reading.recorded_at} />
+                {showLocation && (
+                  <td className={cn(tdClass, "whitespace-nowrap")}>
+                    {reading.location_name ?? <span className="text-muted-foreground">—</span>}
+                  </td>
+                )}
+                <td className={cn(tdClass, "text-right")}>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span className="font-mono">{level.toFixed(2)}</span>
+                  </div>
+                </td>
+                <td className={cn(tdClass, "whitespace-nowrap")}>
+                  <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-zinc-700 uppercase">
+                    <span
+                      className={cn(
+                        "size-1.5 rounded-full",
+                        status === "ok" && "bg-green-600",
+                        status === "low" && "bg-red-600",
+                        status === "high" && "bg-amber-500"
+                      )}
+                    />
+                    {status === "ok" ? "In range" : status}
+                  </span>
+                </td>
+                <NotesCell notes={reading.notes} />
+                <RowActions
+                  label="chlorine reading"
+                  disabled={isPending}
+                  onEdit={() => openEditDialog(reading)}
+                  onDelete={() => setReadingToDelete(reading.id)}
+                />
+              </tr>
+            );
+          })}
+        </tbody>
+      </HistoryTable>
 
       {/* Edit Dialog */}
       <Dialog open={readingToEdit !== null} onOpenChange={(open) => !open && setReadingToEdit(null)}>
@@ -593,68 +599,60 @@ export function ReservoirReadingsTable({
   };
 
   if (readings.length === 0) {
-    return (
-      <p className="text-center text-sm text-slate-500 py-8">
-        No reservoir readings recorded yet
-      </p>
-    );
+    return <EmptyHistory>No reservoir readings recorded yet</EmptyHistory>;
   }
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Reservoir</TableHead>
-            <TableHead className="text-right">Level (in)</TableHead>
-            <TableHead className="text-right">Percent</TableHead>
-            <TableHead>Notes</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+      <HistoryTable>
+        <thead>
+          <tr>
+            <th className={thClass}>Date</th>
+            <th className={thClass}>Reservoir</th>
+            <th className={cn(thClass, "text-right")}>Level · in</th>
+            <th className={thClass}>Capacity</th>
+            <th className={thClass}>Notes</th>
+            <th className={thClass}>
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
           {readings.map((reading) => (
-            <TableRow key={reading.id}>
-              <TableCell>
-                {format(new Date(reading.recorded_at), "MMM d, yyyy h:mm a")}
-              </TableCell>
-              <TableCell>{reading.reservoir_name ?? "—"}</TableCell>
-              <TableCell className="text-right">
-                {reading.level_inches.toLocaleString()}
-              </TableCell>
-              <TableCell className="text-right">
-                {reading.level_percent != null
-                  ? `${reading.level_percent.toFixed(1)}%`
-                  : "—"}
-              </TableCell>
-              <TableCell className="max-w-[200px] truncate">
-                {reading.notes ?? "—"}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => openEditDialog(reading)}
-                    disabled={isPending}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setReadingToDelete(reading.id)}
-                    disabled={isPending}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-600" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
+            <tr key={reading.id} className={rowClass}>
+              <DateCell iso={reading.recorded_at} />
+              <td className={cn(tdClass, "font-mono whitespace-nowrap")}>
+                {reading.reservoir_name ?? "—"}
+              </td>
+              <td className={cn(tdClass, "text-right font-mono")}>
+                {reading.level_inches.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+              </td>
+              <td className={cn(tdClass, "whitespace-nowrap")}>
+                {reading.level_percent != null ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-16 overflow-hidden bg-zinc-200" aria-hidden="true">
+                      <div
+                        className="h-full bg-brand"
+                        style={{ width: `${Math.min(100, Math.max(0, reading.level_percent))}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-zinc-700">{reading.level_percent.toFixed(1)}%</span>
+                  </div>
+                ) : (
+                  <span className="font-mono text-muted-foreground">—</span>
+                )}
+              </td>
+              <NotesCell notes={reading.notes} />
+              <RowActions
+                label="reservoir reading"
+                disabled={isPending}
+                onEdit={() => openEditDialog(reading)}
+                onDelete={() => setReadingToDelete(reading.id)}
+              />
+            </tr>
           ))}
-        </TableBody>
-      </Table>
+        </tbody>
+      </HistoryTable>
 
       {/* Edit Dialog */}
       <Dialog open={readingToEdit !== null} onOpenChange={(open) => !open && setReadingToEdit(null)}>

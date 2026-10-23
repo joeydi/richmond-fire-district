@@ -108,14 +108,6 @@ export function RecentReadings({ readings }: RecentReadingsProps) {
                             {reading.production_rate.toFixed(2)} GPM
                           </span>
                         )}
-                        {reading.interpolated && (
-                          <span
-                            className="rounded-sm bg-muted px-1 text-[10px] text-zinc-600"
-                            title="Estimated from surrounding readings"
-                          >
-                            INTERP
-                          </span>
-                        )}
                       </div>
                     </td>
                   </tr>

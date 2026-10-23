@@ -345,7 +345,7 @@ export function DailyRoundForm({ context, todayLabel, now }: DailyRoundFormProps
   let sectionIndex = 0;
 
   return (
-    <form data-round onSubmit={handleSubmit} className="flex flex-1 flex-col">
+    <form data-bleed onSubmit={handleSubmit} className="flex flex-1 flex-col">
       <div className="w-full max-w-xl flex-1 lg:border-r">
         {/* Round header */}
         <div className="flex flex-col gap-2 px-4 pt-3 pb-2.5">

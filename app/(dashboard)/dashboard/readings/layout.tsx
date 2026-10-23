@@ -25,8 +25,8 @@ export default async function ReadingsLayout({
           </Button>
         )}
       </div>
-      {/* The entry form is full-bleed; history and import pages keep page padding */}
-      <div className="flex flex-1 flex-col p-4 has-[[data-round]]:p-0 lg:p-6">{children}</div>
+      {/* Entry and history views are full-bleed (data-bleed); import keeps page padding */}
+      <div className="flex flex-1 flex-col p-4 has-[[data-bleed]]:p-0 lg:p-6">{children}</div>
     </div>
   );
 }
