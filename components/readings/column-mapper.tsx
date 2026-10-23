@@ -1,17 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { AlertCircle, Calendar, Droplets, FlaskConical, Waves } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { ParsedCSV, ColumnMapping, ImportConfig } from "./import-wizard";
+import { StepFooter, StepTable, labelClass, tdClass, thClass } from "./import-ui";
 
 interface Meter {
   id: string;
@@ -28,13 +23,37 @@ interface ColumnMapperProps {
   parsedCSV: ParsedCSV;
   meters: Meter[];
   reservoirs: Reservoir[];
-  initialMapping?: ColumnMapping;
-  initialConfig?: ImportConfig;
+  initialMapping: ColumnMapping;
+  initialConfig: ImportConfig;
   onBack: () => void;
   onContinue: (mapping: ColumnMapping, config: ImportConfig) => void;
 }
 
 const UNMAPPED = "__unmapped__";
+const SAMPLE_ROWS = 3;
+
+const FIELDS: { key: keyof ColumnMapping; label: string; keywords: string[] }[] = [
+  { key: "date", label: "Date", keywords: ["date", "time", "timestamp", "recorded"] },
+  { key: "meter", label: "Meter", keywords: ["meter", "gallons", "totalizer"] },
+  { key: "chlorine", label: "Chlorine", keywords: ["chlorine", "cl2", "residual"] },
+  { key: "reservoir", label: "Reservoir", keywords: ["reservoir", "tank", "level"] },
+];
+
+/** Guess each field's column from its header; the first matching unused column wins */
+function detectMapping(headers: string[]): ColumnMapping {
+  const mapping: ColumnMapping = { date: null, meter: null, chlorine: null, reservoir: null };
+  const used = new Set<string>();
+  for (const field of FIELDS) {
+    const match = headers.find((h) => !used.has(h) && field.keywords.some((k) => h.toLowerCase().includes(k)));
+    if (match) {
+      mapping[field.key] = match;
+      used.add(match);
+    }
+  }
+  return mapping;
+}
+
+const triggerClass = "!h-8 w-full px-2 text-[13px]";
 
 export function ColumnMapper({
   parsedCSV,
@@ -45,346 +64,185 @@ export function ColumnMapper({
   onBack,
   onContinue,
 }: ColumnMapperProps) {
-  const [mapping, setMapping] = useState<ColumnMapping>(
-    initialMapping || {
-      date: null,
-      meter: null,
-      chlorine: null,
-      reservoir: null,
-    }
+  const isFresh = Object.values(initialMapping).every((v) => v === null);
+  const [mapping, setMapping] = useState<ColumnMapping>(() =>
+    isFresh ? detectMapping(parsedCSV.headers) : initialMapping
   );
-  const [config, setConfig] = useState<ImportConfig>(
-    initialConfig || {
-      meterId: null,
-      reservoirId: null,
-      updateExisting: false,
-    }
-  );
+  const [config, setConfig] = useState<ImportConfig>(() => ({
+    ...initialConfig,
+    // With a single meter or reservoir there's nothing to choose
+    meterId: initialConfig.meterId ?? (meters.length === 1 ? meters[0].id : null),
+    reservoirId: initialConfig.reservoirId ?? (reservoirs.length === 1 ? reservoirs[0].id : null),
+  }));
   const [errors, setErrors] = useState<string[]>([]);
 
-  // Auto-detect date column on mount
-  useEffect(() => {
-    if (!initialMapping) {
-      const dateKeywords = ["date", "time", "timestamp", "recorded", "datetime"];
-      const detectedDate = parsedCSV.headers.find((h) =>
-        dateKeywords.some((k) => h.toLowerCase().includes(k))
-      );
-      if (detectedDate) {
-        setMapping((prev) => ({ ...prev, date: detectedDate }));
-      }
-    }
-  }, [parsedCSV.headers, initialMapping]);
-
-  const handleMappingChange = (field: keyof ColumnMapping, value: string) => {
-    setMapping((prev) => ({
-      ...prev,
-      [field]: value === UNMAPPED ? null : value,
-    }));
+  const setColumn = (field: keyof ColumnMapping, value: string) => {
+    setMapping((prev) => ({ ...prev, [field]: value === UNMAPPED ? null : value }));
     setErrors([]);
   };
 
-  const handleConfigChange = (field: keyof ImportConfig, value: string | boolean) => {
-    setConfig((prev) => ({
-      ...prev,
-      [field]: value === UNMAPPED ? null : value,
-    }));
-  };
-
-  const validate = (): boolean => {
-    const newErrors: string[] = [];
-
-    if (!mapping.date) {
-      newErrors.push("Date column is required");
-    }
-
-    const hasReadingType = mapping.meter || mapping.chlorine || mapping.reservoir;
-    if (!hasReadingType) {
-      newErrors.push("At least one reading type must be mapped (meter, chlorine, or reservoir)");
-    }
-
-    if (mapping.meter && !config.meterId) {
-      newErrors.push("Please select a target meter for the meter readings");
-    }
-
-    if (mapping.reservoir && !config.reservoirId) {
-      newErrors.push("Please select a target reservoir for the reservoir readings");
-    }
-
-    setErrors(newErrors);
-    return newErrors.length === 0;
+  const setTarget = (field: "meterId" | "reservoirId", value: string) => {
+    setConfig((prev) => ({ ...prev, [field]: value === UNMAPPED ? null : value }));
+    setErrors([]);
   };
 
   const handleContinue = () => {
-    if (validate()) {
-      onContinue(mapping, config);
+    const newErrors: string[] = [];
+    if (!mapping.date) newErrors.push("Choose the column that holds the date");
+    if (!mapping.meter && !mapping.chlorine && !mapping.reservoir) {
+      newErrors.push("Map at least one reading column: meter, chlorine or reservoir");
     }
+    if (mapping.meter && !config.meterId) newErrors.push("Choose which meter the meter readings belong to");
+    if (mapping.reservoir && !config.reservoirId) {
+      newErrors.push("Choose which reservoir the reservoir readings belong to");
+    }
+    setErrors(newErrors);
+    if (newErrors.length === 0) onContinue(mapping, config);
   };
 
-  // Get available columns (excluding already mapped ones)
-  const getAvailableColumns = (currentField: keyof ColumnMapping) => {
-    const usedColumns = new Set(
+  // Columns not already taken by another field
+  const availableColumns = (field: keyof ColumnMapping) => {
+    const used = new Set(
       Object.entries(mapping)
-        .filter(([key, value]) => key !== currentField && value !== null)
+        .filter(([key, value]) => key !== field && value !== null)
         .map(([, value]) => value)
     );
-    return parsedCSV.headers.filter((h) => !usedColumns.has(h));
+    return parsedCSV.headers.filter((h) => h && !used.has(h));
   };
 
+  const columnSelect = (field: keyof ColumnMapping, label: string) => (
+    <Select value={mapping[field] ?? UNMAPPED} onValueChange={(value) => setColumn(field, value)}>
+      <SelectTrigger size="sm" className={triggerClass} aria-label={`${label} column`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={UNMAPPED}>
+          <span className="text-muted-foreground">Not in this file</span>
+        </SelectItem>
+        {availableColumns(field).map((header) => (
+          <SelectItem key={header} value={header}>
+            {header}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
+  const targetSelect = (
+    field: "meterId" | "reservoirId",
+    label: string,
+    options: { id: string; name: string }[],
+    enabled: boolean
+  ) => (
+    <Select value={config[field] ?? UNMAPPED} onValueChange={(value) => setTarget(field, value)} disabled={!enabled}>
+      <SelectTrigger size="sm" className={triggerClass} aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={UNMAPPED}>
+          <span className="text-muted-foreground">Choose…</span>
+        </SelectItem>
+        {options.map((option) => (
+          <SelectItem key={option.id} value={option.id}>
+            {option.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
+  const targets: Record<keyof ColumnMapping, React.ReactNode> = {
+    date: <span className="text-xs text-muted-foreground">Required</span>,
+    meter: targetSelect("meterId", "Target meter", meters, !!mapping.meter),
+    chlorine: <span className="text-xs text-muted-foreground">Chlorine log</span>,
+    reservoir: targetSelect("reservoirId", "Target reservoir", reservoirs, !!mapping.reservoir),
+  };
+
+  const mappedFields = FIELDS.filter((f) => mapping[f.key]);
+
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-slate-600">
-        Map the columns from your CSV to the appropriate fields. The date column is required,
-        and at least one reading type must be mapped.
-      </p>
+    <>
+      <div className="flex flex-col gap-5 p-4">
+        <section>
+          <div className="hidden grid-cols-[96px_1fr_1fr] gap-3 pb-1.5 sm:grid">
+            <span className={labelClass}>Field</span>
+            <span className={labelClass}>CSV column</span>
+            <span className={labelClass}>Save to</span>
+          </div>
+          <div className="divide-y border-y">
+            {FIELDS.map((field) => (
+              <div
+                key={field.key}
+                className="grid grid-cols-2 items-center gap-x-3 gap-y-1.5 py-2 sm:grid-cols-[96px_1fr_1fr]"
+              >
+                <span className="col-span-2 text-[13px] font-medium sm:col-span-1">
+                  {field.label}
+                  {field.key === "date" && <span className="text-red-600"> *</span>}
+                </span>
+                {columnSelect(field.key, field.label)}
+                <div className="flex min-h-8 items-center">{targets[field.key]}</div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        {/* Date column mapping */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-slate-500" />
-            Date Column
-            <span className="text-red-500">*</span>
-          </Label>
-          <Select
-            value={mapping.date || UNMAPPED}
-            onValueChange={(value) => handleMappingChange("date", value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select date column" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={UNMAPPED}>-- Not mapped --</SelectItem>
-              {getAvailableColumns("date").map((header) => (
-                <SelectItem key={header} value={header}>
-                  {header}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-slate-500">
-            The column containing date/time values
-          </p>
-        </div>
-
-        {/* Spacer */}
-        <div />
-
-        {/* Meter reading mapping */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <Droplets className="h-4 w-4 text-blue-500" />
-            Meter Reading Column
-          </Label>
-          <Select
-            value={mapping.meter || UNMAPPED}
-            onValueChange={(value) => handleMappingChange("meter", value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select column (optional)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={UNMAPPED}>-- Not mapped --</SelectItem>
-              {getAvailableColumns("meter").map((header) => (
-                <SelectItem key={header} value={header}>
-                  {header}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Target meter selector */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            Target Meter
-            {mapping.meter && <span className="text-red-500">*</span>}
-          </Label>
-          <Select
-            value={config.meterId || UNMAPPED}
-            onValueChange={(value) => handleConfigChange("meterId", value)}
-            disabled={!mapping.meter}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select meter" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={UNMAPPED}>-- Not selected --</SelectItem>
-              {meters.map((meter) => (
-                <SelectItem key={meter.id} value={meter.id}>
-                  {meter.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-slate-500">
-            Which meter these readings belong to
-          </p>
-        </div>
-
-        {/* Chlorine reading mapping */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <FlaskConical className="h-4 w-4 text-green-500" />
-            Chlorine Level Column
-          </Label>
-          <Select
-            value={mapping.chlorine || UNMAPPED}
-            onValueChange={(value) => handleMappingChange("chlorine", value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select column (optional)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={UNMAPPED}>-- Not mapped --</SelectItem>
-              {getAvailableColumns("chlorine").map((header) => (
-                <SelectItem key={header} value={header}>
-                  {header}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-slate-500">
-            Chlorine readings don&apos;t require a target
-          </p>
-        </div>
-
-        {/* Spacer for chlorine */}
-        <div />
-
-        {/* Reservoir reading mapping */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <Waves className="h-4 w-4 text-cyan-500" />
-            Reservoir Level Column
-          </Label>
-          <Select
-            value={mapping.reservoir || UNMAPPED}
-            onValueChange={(value) => handleMappingChange("reservoir", value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select column (optional)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={UNMAPPED}>-- Not mapped --</SelectItem>
-              {getAvailableColumns("reservoir").map((header) => (
-                <SelectItem key={header} value={header}>
-                  {header}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Target reservoir selector */}
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            Target Reservoir
-            {mapping.reservoir && <span className="text-red-500">*</span>}
-          </Label>
-          <Select
-            value={config.reservoirId || UNMAPPED}
-            onValueChange={(value) => handleConfigChange("reservoirId", value)}
-            disabled={!mapping.reservoir}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select reservoir" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={UNMAPPED}>-- Not selected --</SelectItem>
-              {reservoirs.map((reservoir) => (
-                <SelectItem key={reservoir.id} value={reservoir.id}>
-                  {reservoir.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-slate-500">
-            Which reservoir these readings belong to
-          </p>
-        </div>
-      </div>
-
-      {/* Preview of sample data */}
-      <div className="rounded-lg border bg-slate-50 p-4">
-        <h4 className="mb-2 text-sm font-medium text-slate-700">Sample Data Preview</h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b">
-                <th className="px-2 py-1 text-left font-medium text-slate-600">Row</th>
-                {mapping.date && (
-                  <th className="px-2 py-1 text-left font-medium text-slate-600">Date</th>
-                )}
-                {mapping.meter && (
-                  <th className="px-2 py-1 text-left font-medium text-slate-600">Meter</th>
-                )}
-                {mapping.chlorine && (
-                  <th className="px-2 py-1 text-left font-medium text-slate-600">Chlorine</th>
-                )}
-                {mapping.reservoir && (
-                  <th className="px-2 py-1 text-left font-medium text-slate-600">Reservoir</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {parsedCSV.rows.slice(0, 3).map((row, i) => {
-                const dateIndex = mapping.date ? parsedCSV.headers.indexOf(mapping.date) : -1;
-                const meterIndex = mapping.meter ? parsedCSV.headers.indexOf(mapping.meter) : -1;
-                const chlorineIndex = mapping.chlorine ? parsedCSV.headers.indexOf(mapping.chlorine) : -1;
-                const reservoirIndex = mapping.reservoir ? parsedCSV.headers.indexOf(mapping.reservoir) : -1;
-
-                return (
+        <section className="flex flex-col gap-2">
+          <h3 className={labelClass}>Sample · first {SAMPLE_ROWS} rows as mapped</h3>
+          {mappedFields.length > 0 ? (
+            <StepTable>
+              <thead>
+                <tr>
+                  <th className={cn(thClass, "w-12")}>Row</th>
+                  {mappedFields.map((f) => (
+                    <th key={f.key} className={thClass}>
+                      {f.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {parsedCSV.rows.slice(0, SAMPLE_ROWS).map((row, i) => (
                   <tr key={i} className="border-b last:border-0">
-                    <td className="px-2 py-1 text-slate-400">{i + 1}</td>
-                    {mapping.date && (
-                      <td className="px-2 py-1 text-slate-700">{row[dateIndex] || "—"}</td>
-                    )}
-                    {mapping.meter && (
-                      <td className="px-2 py-1 text-slate-700">{row[meterIndex] || "—"}</td>
-                    )}
-                    {mapping.chlorine && (
-                      <td className="px-2 py-1 text-slate-700">{row[chlorineIndex] || "—"}</td>
-                    )}
-                    {mapping.reservoir && (
-                      <td className="px-2 py-1 text-slate-700">{row[reservoirIndex] || "—"}</td>
-                    )}
+                    <td className={cn(tdClass, "font-mono text-muted-foreground")}>{i + 2}</td>
+                    {mappedFields.map((f) => {
+                      const value = row[parsedCSV.headers.indexOf(mapping[f.key]!)];
+                      return (
+                        <td key={f.key} className={cn(tdClass, "font-mono text-zinc-700")}>
+                          {value || <span className="text-muted-foreground">—</span>}
+                        </td>
+                      );
+                    })}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {!mapping.date && !mapping.meter && !mapping.chlorine && !mapping.reservoir && (
-          <p className="mt-2 text-xs text-slate-400 italic">
-            Map columns above to see preview
-          </p>
+                ))}
+              </tbody>
+            </StepTable>
+          ) : (
+            <p className="rounded-md border border-dashed px-4 py-6 text-center text-xs text-muted-foreground">
+              Map a column to see it here
+            </p>
+          )}
+        </section>
+
+        {errors.length > 0 && (
+          <ul role="alert" className="flex flex-col gap-1">
+            {errors.map((error) => (
+              <li key={error} className="flex items-center gap-2 text-xs text-red-600">
+                <AlertCircle className="size-3.5 shrink-0" />
+                {error}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
-      {/* Errors */}
-      {errors.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-500" />
-            <div>
-              <p className="font-medium text-red-800">Please fix the following:</p>
-              <ul className="mt-1 list-inside list-disc text-sm text-red-700">
-                {errors.map((error, i) => (
-                  <li key={i}>{error}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex gap-2">
-        <Button variant="outline" onClick={onBack}>
+      <StepFooter hint="ROW NUMBERS MATCH THE FILE · ROW 1 IS THE HEADER">
+        <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={onBack}>
           Back
         </Button>
-        <Button onClick={handleContinue}>Continue</Button>
-      </div>
-    </div>
+        <Button size="sm" className="h-7 px-2.5 text-xs" onClick={handleContinue}>
+          Check rows
+        </Button>
+      </StepFooter>
+    </>
   );
 }

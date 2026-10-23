@@ -1,21 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Upload, Columns, CheckCircle, Play, FileCheck } from "lucide-react";
+import { useRef, useState } from "react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CSVUpload } from "./csv-upload";
 import { ColumnMapper } from "./column-mapper";
 import { ImportPreview } from "./import-preview";
-import {
-  validateImportData,
-  executeImport,
-  type ValidationResult as ServerValidationResult,
-  type ImportResult as ServerImportResult,
-  type ParsedRow,
-  type DuplicateInfo,
-} from "@/lib/actions/readings-import";
+import { validateImportData, executeImport, type ParsedRow, type DuplicateInfo } from "@/lib/actions/readings-import";
 import { ImportResults } from "./import-results";
 
 interface Meter {
@@ -34,9 +25,10 @@ interface ImportWizardProps {
   reservoirs: Reservoir[];
 }
 
-export type WizardStep = "upload" | "map" | "validate" | "import" | "results";
+export type WizardStep = "upload" | "map" | "review" | "done";
 
 export interface ParsedCSV {
+  fileName: string;
   headers: string[];
   rows: string[][];
 }
@@ -72,74 +64,105 @@ export interface ImportResult {
   errors: { row: number; message: string }[];
 }
 
-const steps: { id: WizardStep; label: string; icon: React.ElementType }[] = [
-  { id: "upload", label: "Upload", icon: Upload },
-  { id: "map", label: "Map Columns", icon: Columns },
-  { id: "validate", label: "Validate", icon: CheckCircle },
-  { id: "import", label: "Import", icon: Play },
-  { id: "results", label: "Results", icon: FileCheck },
+const steps: { id: WizardStep; label: string }[] = [
+  { id: "upload", label: "Upload" },
+  { id: "map", label: "Map columns" },
+  { id: "review", label: "Review" },
+  { id: "done", label: "Done" },
 ];
+
+const EMPTY_MAPPING: ColumnMapping = { date: null, meter: null, chlorine: null, reservoir: null };
+const EMPTY_CONFIG: ImportConfig = { meterId: null, reservoirId: null, updateExisting: false };
+
+function Stepper({ current }: { current: WizardStep }) {
+  const currentIndex = steps.findIndex((s) => s.id === current);
+  return (
+    <nav aria-label="Import progress">
+      <ol className="flex items-center gap-1.5 font-mono text-[11px] uppercase">
+        {steps.map((step, index) => {
+          const done = index < currentIndex;
+          const active = index === currentIndex;
+          return (
+            <li key={step.id} className="flex items-center gap-1.5">
+              {index > 0 && <span aria-hidden="true" className="h-px w-3 bg-border sm:w-5" />}
+              <span
+                aria-current={active ? "step" : undefined}
+                className={cn(
+                  "flex items-center gap-1.5",
+                  active ? "font-medium text-foreground" : done ? "text-zinc-600" : "text-muted-foreground"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex size-4 items-center justify-center rounded-full border text-[9px]",
+                    active && "border-foreground bg-foreground text-background",
+                    done && "border-brand bg-brand text-white"
+                  )}
+                >
+                  {done ? <Check className="size-2.5" strokeWidth={3} /> : index + 1}
+                </span>
+                <span className={cn(!active && "hidden sm:inline")}>{step.label}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
 
 export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
   const [currentStep, setCurrentStep] = useState<WizardStep>("upload");
   const [parsedCSV, setParsedCSV] = useState<ParsedCSV | null>(null);
-  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({
-    date: null,
-    meter: null,
-    chlorine: null,
-    reservoir: null,
-  });
-  const [importConfig, setImportConfig] = useState<ImportConfig>({
-    meterId: null,
-    reservoirId: null,
-    updateExisting: false,
-  });
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>(EMPTY_MAPPING);
+  const [importConfig, setImportConfig] = useState<ImportConfig>(EMPTY_CONFIG);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-
-  const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
-
-  const goToNextStep = useCallback(() => {
-    const currentIndex = steps.findIndex((s) => s.id === currentStep);
-    const nextIndex = currentIndex + 1;
-    if (nextIndex < steps.length) {
-      setCurrentStep(steps[nextIndex].id);
-    }
-  }, [currentStep]);
-
-  const goToPreviousStep = () => {
-    const prevIndex = currentStepIndex - 1;
-    if (prevIndex >= 0) {
-      setCurrentStep(steps[prevIndex].id);
-    }
-  };
+  // Ignores a validation that finishes after the user has gone back
+  const validationRun = useRef(0);
 
   const resetWizard = () => {
+    validationRun.current++;
     setCurrentStep("upload");
     setParsedCSV(null);
-    setColumnMapping({ date: null, meter: null, chlorine: null, reservoir: null });
-    setImportConfig({ meterId: null, reservoirId: null, updateExisting: false });
+    setColumnMapping(EMPTY_MAPPING);
+    setImportConfig(EMPTY_CONFIG);
     setValidationResult(null);
     setImportResult(null);
-    setIsValidating(false);
     setIsImporting(false);
   };
 
-  const runImport = async () => {
-    if (!validationResult || validationResult.parsedRows.length === 0) return;
+  const runValidation = async (csv: ParsedCSV, mapping: ColumnMapping, config: ImportConfig) => {
+    const run = ++validationRun.current;
+    setValidationResult(null);
+    let result: ValidationResult;
+    try {
+      result = await validateImportData(csv.headers, csv.rows, mapping, config);
+    } catch (error) {
+      console.error("Validation error:", error);
+      result = {
+        success: false,
+        parsedRows: [],
+        validRows: 0,
+        invalidRows: csv.rows.length,
+        duplicateRows: 0,
+        errors: [{ row: 0, message: "Validation failed. Please try again." }],
+        duplicates: [],
+      };
+    }
+    if (run === validationRun.current) setValidationResult(result);
+  };
 
+  const runImport = async (updateExisting: boolean) => {
+    if (!validationResult || validationResult.parsedRows.length === 0) return;
+    const config = { ...importConfig, updateExisting };
+    setImportConfig(config);
     setIsImporting(true);
     try {
-      const result = await executeImport(
-        validationResult.parsedRows,
-        columnMapping,
-        importConfig,
-        validationResult.duplicates
+      setImportResult(
+        await executeImport(validationResult.parsedRows, columnMapping, config, validationResult.duplicates)
       );
-      setImportResult(result);
-      goToNextStep();
     } catch (error) {
       console.error("Import error:", error);
       setImportResult({
@@ -149,106 +172,37 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
         skipped: 0,
         errors: [{ row: 0, message: "Import failed. Please try again." }],
       });
-      goToNextStep();
     } finally {
       setIsImporting(false);
+      setCurrentStep("done");
     }
   };
 
-  // Run validation when entering validate step
-  useEffect(() => {
-    if (currentStep === "validate" && parsedCSV && !validationResult && !isValidating) {
-      const runValidation = async () => {
-        setIsValidating(true);
-        try {
-          const result = await validateImportData(
-            parsedCSV.headers,
-            parsedCSV.rows,
-            columnMapping,
-            importConfig
-          );
-          setValidationResult(result);
-        } catch (error) {
-          console.error("Validation error:", error);
-          setValidationResult({
-            success: false,
-            parsedRows: [],
-            validRows: 0,
-            invalidRows: parsedCSV.rows.length,
-            duplicateRows: 0,
-            errors: [{ row: 0, message: "Validation failed. Please try again." }],
-            duplicates: [],
-          });
-        } finally {
-          setIsValidating(false);
-        }
-      };
-      runValidation();
-    }
-  }, [currentStep, parsedCSV, columnMapping, importConfig, validationResult, isValidating]);
-
   return (
-    <div className="space-y-6">
-      {/* Step indicator */}
-      <nav aria-label="Progress">
-        <ol className="flex items-center">
-          {steps.map((step, index) => (
-            <li
-              key={step.id}
-              className={cn("relative", index !== steps.length - 1 && "flex-1")}
-            >
-              <div className="flex items-center">
-                <div
-                  className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-full border-2",
-                    index < currentStepIndex
-                      ? "border-blue-600 bg-blue-600 text-white"
-                      : index === currentStepIndex
-                        ? "border-blue-600 bg-white text-blue-600"
-                        : "border-slate-300 bg-white text-slate-400"
-                  )}
-                >
-                  <step.icon className="h-5 w-5" />
-                </div>
-                {index !== steps.length - 1 && (
-                  <div
-                    className={cn(
-                      "ml-4 h-0.5 flex-1",
-                      index < currentStepIndex ? "bg-blue-600" : "bg-slate-200"
-                    )}
-                  />
-                )}
-              </div>
-              <span
-                className={cn(
-                  "absolute -bottom-6 left-0 w-max text-xs font-medium",
-                  index <= currentStepIndex ? "text-blue-600" : "text-slate-400"
-                )}
-              >
-                {step.label}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </nav>
+    <div data-bleed className="flex flex-1 flex-col">
+      <div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-1.5">
+        <h2 className="text-[13px] font-semibold">Import CSV</h2>
+        {parsedCSV && (
+          <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{parsedCSV.fileName}</span>
+        )}
+        <div className="ml-auto">
+          <Stepper current={currentStep} />
+        </div>
+      </div>
 
-      {/* Step content */}
-      <Card className="mt-12">
-        <CardHeader>
-          <CardTitle>
-            {currentStep === "upload" && "Upload CSV File"}
-            {currentStep === "map" && "Map Columns"}
-            {currentStep === "validate" && "Validate Data"}
-            {currentStep === "import" && "Import Data"}
-            {currentStep === "results" && "Import Complete"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="flex-1 border-t bg-zinc-50/60 p-4 lg:p-6">
+        <div className="mx-auto max-w-3xl overflow-hidden rounded-lg border bg-background shadow-xs">
           {currentStep === "upload" && (
             <CSVUpload
+              initial={parsedCSV}
               onUpload={(data) => {
+                // A different file invalidates the old column choices
+                if (data !== parsedCSV) {
+                  setColumnMapping(EMPTY_MAPPING);
+                  setImportConfig(EMPTY_CONFIG);
+                }
                 setParsedCSV(data);
-                goToNextStep();
+                setCurrentStep("map");
               }}
             />
           )}
@@ -260,90 +214,37 @@ export function ImportWizard({ meters, reservoirs }: ImportWizardProps) {
               reservoirs={reservoirs}
               initialMapping={columnMapping}
               initialConfig={importConfig}
-              onBack={goToPreviousStep}
+              onBack={() => setCurrentStep("upload")}
               onContinue={(mapping, config) => {
                 setColumnMapping(mapping);
                 setImportConfig(config);
-                goToNextStep();
+                setCurrentStep("review");
+                runValidation(parsedCSV, mapping, config);
               }}
             />
           )}
 
-          {currentStep === "validate" && (
+          {currentStep === "review" && parsedCSV && (
             <ImportPreview
-              validationResult={validationResult || {
-                success: false,
-                parsedRows: [],
-                validRows: 0,
-                invalidRows: 0,
-                duplicateRows: 0,
-                errors: [],
-                duplicates: [],
-              }}
-              isValidating={isValidating}
+              validationResult={validationResult}
+              rowCount={parsedCSV.rows.length}
+              mapping={columnMapping}
+              isImporting={isImporting}
+              initialUpdateExisting={importConfig.updateExisting}
               onBack={() => {
+                validationRun.current++;
                 setValidationResult(null);
-                goToPreviousStep();
+                setCurrentStep("map");
               }}
-              onContinue={(updateExisting) => {
-                setImportConfig((prev) => ({ ...prev, updateExisting }));
-                goToNextStep();
-              }}
+              onImport={runImport}
             />
           )}
 
-          {currentStep === "import" && (
-            <div className="space-y-6">
-              {isImporting ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-                  <p className="mt-4 text-slate-600">Importing data...</p>
-                  <p className="text-sm text-slate-400">This may take a moment</p>
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <h4 className="font-medium text-slate-900">Ready to Import</h4>
-                    <div className="mt-2 space-y-1 text-sm text-slate-600">
-                      <p>
-                        <span className="font-medium">{validationResult?.validRows || 0}</span> rows will be processed
-                      </p>
-                      {validationResult && validationResult.duplicateRows > 0 && (
-                        <p className="text-amber-600">
-                          <span className="font-medium">{validationResult.duplicateRows}</span> rows match existing records
-                          {importConfig.updateExisting
-                            ? " (will be updated)"
-                            : " (will be skipped)"}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={goToPreviousStep}>
-                      Back
-                    </Button>
-                    <Button onClick={runImport}>
-                      Import Data
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
+          {currentStep === "done" && importResult && (
+            <ImportResults result={importResult} mapping={columnMapping} onImportAnother={resetWizard} />
           )}
-
-          {currentStep === "results" && importResult && (
-            <ImportResults result={importResult} onImportAnother={resetWizard} />
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Debug info - hidden in production */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="text-xs text-slate-400 p-4 bg-slate-50 rounded">
-          <p>Meters: {meters.length}</p>
-          <p>Reservoirs: {reservoirs.length}</p>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -130,6 +130,13 @@ function parseDate(dateStr: string): { date: Date | null; hadTime: boolean } {
 }
 
 /**
+ * Supabase returns timestamps as "…+00:00"; parsed rows compare as toISOString() "…Z".
+ */
+function normalizeTimestamp(value: string): string {
+  return new Date(value).toISOString();
+}
+
+/**
  * Parse a numeric value from a string, handling common formats.
  */
 function parseNumericValue(value: string): number | null {
@@ -256,7 +263,7 @@ export async function validateImportData(
         .in("recorded_at", dates);
 
       if (existingMeter) {
-        const existingDates = new Set(existingMeter.map((r) => r.recorded_at));
+        const existingDates = new Set(existingMeter.map((r) => normalizeTimestamp(r.recorded_at)));
         parsedRows.forEach((row) => {
           if (existingDates.has(row.date.toISOString()) && row.meterValue !== null) {
             duplicates.push({
@@ -277,7 +284,7 @@ export async function validateImportData(
         .in("recorded_at", dates);
 
       if (existingChlorine) {
-        const existingDates = new Set(existingChlorine.map((r) => r.recorded_at));
+        const existingDates = new Set(existingChlorine.map((r) => normalizeTimestamp(r.recorded_at)));
         parsedRows.forEach((row) => {
           if (existingDates.has(row.date.toISOString()) && row.chlorineValue !== null) {
             duplicates.push({
@@ -299,7 +306,7 @@ export async function validateImportData(
         .in("recorded_at", dates);
 
       if (existingReservoir) {
-        const existingDates = new Set(existingReservoir.map((r) => r.recorded_at));
+        const existingDates = new Set(existingReservoir.map((r) => normalizeTimestamp(r.recorded_at)));
         parsedRows.forEach((row) => {
           if (existingDates.has(row.date.toISOString()) && row.reservoirValue !== null) {
             duplicates.push({
