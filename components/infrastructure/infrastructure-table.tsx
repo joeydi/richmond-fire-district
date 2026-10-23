@@ -1,18 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -20,24 +10,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import {
   ChevronUp,
   ChevronDown,
+  ChevronRight,
+  ChevronLeft,
   Search,
   Pencil,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
+  Plus,
 } from "lucide-react";
-import type { InfrastructurePoint, InfrastructureType } from "@/lib/types/infrastructure";
+import { cn } from "@/lib/utils";
+import type {
+  InfrastructurePoint,
+  InfrastructureStatus,
+  InfrastructureType,
+} from "@/lib/types/infrastructure";
 import {
   INFRASTRUCTURE_COLORS,
   INFRASTRUCTURE_LABELS,
   INFRASTRUCTURE_STATUS_COLORS,
   INFRASTRUCTURE_STATUS_LABELS,
 } from "@/lib/types/infrastructure";
+
+export type UpdateUrl = (params: Record<string, string | number>) => void;
 
 interface InfrastructureTableProps {
   points: InfrastructurePoint[];
@@ -46,16 +41,21 @@ interface InfrastructureTableProps {
   pageSize: number;
   search: string;
   typeFilter: string;
+  statusFilter: string;
   sortBy: string;
   sortOrder: "asc" | "desc";
   isAdmin: boolean;
-  onDelete?: (point: InfrastructurePoint) => void;
-  onEdit?: (point: InfrastructurePoint) => void;
+  isPending: boolean;
+  selectedId: string | null;
+  updateUrl: UpdateUrl;
+  onSelect: (point: InfrastructurePoint) => void;
+  onEdit: (point: InfrastructurePoint) => void;
+  onCreate: () => void;
 }
 
 const typeOptions: Array<{ value: InfrastructureType | "all"; label: string }> = [
-  { value: "all", label: "All Types" },
-  { value: "shutoff_valve", label: "Shutoff Valve" },
+  { value: "all", label: "All types" },
+  { value: "shutoff_valve", label: "Shutoff valve" },
   { value: "hydrant", label: "Hydrant" },
   { value: "well", label: "Well" },
   { value: "meter", label: "Meter" },
@@ -63,34 +63,51 @@ const typeOptions: Array<{ value: InfrastructureType | "all"; label: string }> =
   { value: "other", label: "Other" },
 ];
 
-function formatCoordinate(coord: number): string {
-  return coord.toFixed(6);
-}
+const statusOptions: Array<{ value: InfrastructureStatus | "all"; label: string }> = [
+  { value: "all", label: "Any status" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "unknown", label: "Unknown" },
+];
 
-function getTypeColor(type: InfrastructureType): string {
-  return INFRASTRUCTURE_COLORS[type] || "#6B7280";
-}
-
-function getStatusColor(status: string): string {
+function SortHeader({
+  column,
+  children,
+  className,
+  sortBy,
+  sortOrder,
+  onSort,
+}: {
+  column: string;
+  children: React.ReactNode;
+  className?: string;
+  sortBy: string;
+  sortOrder: "asc" | "desc";
+  onSort: (column: string) => void;
+}) {
+  const isSorted = sortBy === column;
   return (
-    INFRASTRUCTURE_STATUS_COLORS[
-      status as keyof typeof INFRASTRUCTURE_STATUS_COLORS
-    ] || "#6B7280"
+    <th
+      aria-sort={isSorted ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
+      className={cn("border-b px-2 py-1.5 font-medium", className)}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className="inline-flex items-center gap-0.5 uppercase hover:text-foreground"
+      >
+        {children}
+        {isSorted &&
+          (sortOrder === "asc" ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />)}
+      </button>
+    </th>
   );
 }
 
-function hexToTailwind(hex: string): string {
-  const colorMap: Record<string, string> = {
-    "#EF4444": "bg-red-100 text-red-800",
-    "#F97316": "bg-orange-100 text-orange-800",
-    "#3B82F6": "bg-blue-100 text-blue-800",
-    "#22C55E": "bg-green-100 text-green-800",
-    "#8B5CF6": "bg-purple-100 text-purple-800",
-    "#6B7280": "bg-slate-100 text-slate-800",
-    "#F59E0B": "bg-amber-100 text-amber-800",
-    "#9CA3AF": "bg-gray-100 text-gray-800",
-  };
-  return colorMap[hex] || "bg-slate-100 text-slate-800";
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
 export function InfrastructureTable({
@@ -100,252 +117,276 @@ export function InfrastructureTable({
   pageSize,
   search: initialSearch,
   typeFilter,
+  statusFilter,
   sortBy,
   sortOrder,
   isAdmin,
-  onDelete,
+  isPending,
+  selectedId,
+  updateUrl,
+  onSelect,
   onEdit,
+  onCreate,
 }: InfrastructureTableProps) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(initialSearch);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const totalPages = Math.ceil(totalCount / pageSize);
+  const hasFilters = Boolean(initialSearch) || typeFilter !== "all" || statusFilter !== "all";
 
-  const updateUrl = (params: Record<string, string | number>) => {
-    const url = new URL(window.location.href);
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) {
-        url.searchParams.set(key, String(value));
-      } else {
-        url.searchParams.delete(key);
+  // "/" focuses search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        searchRef.current?.focus();
       }
-    });
-    startTransition(() => {
-      router.push(url.pathname + url.search);
-    });
-  };
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     updateUrl({ search, page: 1 });
   };
 
-  const handleTypeChange = (value: string) => {
-    updateUrl({ type: value, page: 1 });
-  };
-
   const handleSort = (column: string) => {
-    const newOrder =
-      sortBy === column && sortOrder === "asc" ? "desc" : "asc";
+    const newOrder = sortBy === column && sortOrder === "asc" ? "desc" : "asc";
     updateUrl({ sortBy: column, sortOrder: newOrder, page: 1 });
   };
 
-  const handlePageChange = (page: number) => {
-    updateUrl({ page });
-  };
-
-  const SortIcon = ({ column }: { column: string }) => {
-    if (sortBy !== column) return null;
-    return sortOrder === "asc" ? (
-      <ChevronUp className="ml-1 inline h-4 w-4" />
-    ) : (
-      <ChevronDown className="ml-1 inline h-4 w-4" />
-    );
-  };
+  const sortProps = { sortBy, sortOrder, onSort: handleSort };
 
   return (
-    <div className="space-y-4">
-      {/* Search and Filter */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <form onSubmit={handleSearch} className="flex max-w-sm flex-1 gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              type="text"
-              placeholder="Search by name or notes..."
+    <div className="flex min-h-full flex-col">
+      {/* Toolbar */}
+      <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2">
+        <form onSubmit={handleSearch} className="flex w-full sm:w-64">
+          <label className="flex h-7 flex-1 items-center gap-2 rounded-md border px-2 focus-within:border-ring">
+            <Search className="size-3.5 text-muted-foreground" />
+            <span className="sr-only">Search name or notes</span>
+            <input
+              ref={searchRef}
+              type="search"
+              placeholder="Search name or notes"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
+              className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
             />
-          </div>
-          <Button type="submit" variant="outline" disabled={isPending}>
-            Search
-          </Button>
+            <kbd className="hidden sm:inline-flex">/</kbd>
+          </label>
         </form>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Select value={typeFilter || "all"} onValueChange={handleTypeChange}>
-            <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Filter by type" />
-            </SelectTrigger>
-            <SelectContent>
-              {typeOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <Select value={typeFilter} onValueChange={(value) => updateUrl({ type: value === "all" ? "" : value, page: 1 })}>
+          <SelectTrigger size="sm" className="!h-7 px-2 text-xs" aria-label="Type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {typeOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-          <Button variant="outline" asChild>
-            <Link href="/dashboard/infrastructure/report">
-              <FileText className="mr-2 h-4 w-4" />
-              Infrastructure Report
-            </Link>
-          </Button>
+        <Select
+          value={statusFilter}
+          onValueChange={(value) => updateUrl({ status: value === "all" ? "" : value, page: 1 })}
+        >
+          <SelectTrigger size="sm" className="!h-7 px-2 text-xs" aria-label="Status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {statusOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="flex-1" />
+
+        <span
+          className={cn(
+            "font-mono text-[11px] text-muted-foreground transition-opacity",
+            isPending && "opacity-50"
+          )}
+        >
+          {totalCount} {totalCount === 1 ? "POINT" : "POINTS"}
+        </span>
+
+        <div className="flex gap-0.5 rounded-md bg-muted p-0.5 font-mono text-[11px]">
+          <span className="flex h-6 items-center rounded-sm bg-background px-2 font-medium shadow-[0_0_0_1px_var(--border)]">
+            TABLE
+          </span>
+          <Link
+            href="/dashboard/map"
+            className="flex h-6 items-center rounded-sm px-2 text-muted-foreground hover:text-foreground"
+          >
+            MAP
+          </Link>
         </div>
+
+        <Button variant="outline" size="sm" className="h-7 px-2 font-mono text-[11px]" asChild>
+          <Link href="/dashboard/infrastructure/report">REPORT PDF</Link>
+        </Button>
+
+        {isAdmin && (
+          <Button size="sm" className="h-7 px-2.5 text-xs" onClick={onCreate}>
+            <Plus className="size-3.5" />
+            Point
+          </Button>
+        )}
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border bg-white overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead
-                className="cursor-pointer hover:bg-slate-50"
-                onClick={() => handleSort("name")}
-              >
-                Name
-                <SortIcon column="name" />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-slate-50"
-                onClick={() => handleSort("type")}
-              >
-                Type
-                <SortIcon column="type" />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-slate-50"
-                onClick={() => handleSort("status")}
-              >
-                Status
-                <SortIcon column="status" />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-slate-50 text-right"
-                onClick={() => handleSort("latitude")}
-              >
-                Latitude
-                <SortIcon column="latitude" />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-slate-50 text-right"
-                onClick={() => handleSort("longitude")}
-              >
-                Longitude
-                <SortIcon column="longitude" />
-              </TableHead>
-              {isAdmin && <TableHead className="w-24">Actions</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <div className="flex-1 overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="bg-zinc-50 text-left font-mono text-[10px] tracking-[0.06em] text-muted-foreground uppercase">
+              <th className="w-10 border-b py-1.5 pl-4 font-medium">#</th>
+              <SortHeader column="name" {...sortProps}>Name</SortHeader>
+              <SortHeader column="type" {...sortProps}>Type</SortHeader>
+              <SortHeader column="status" {...sortProps}>Status</SortHeader>
+              <SortHeader column="latitude" className="text-right" {...sortProps}>
+                Lat
+              </SortHeader>
+              <SortHeader column="longitude" className="text-right" {...sortProps}>
+                Lon
+              </SortHeader>
+              <th className="w-16 border-b pr-3">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
             {points.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={isAdmin ? 6 : 5}
-                  className="h-24 text-center text-slate-500"
-                >
-                  {initialSearch || typeFilter !== "all"
-                    ? "No infrastructure points found matching your filters."
+              <tr>
+                <td colSpan={7} className="h-24 text-center text-muted-foreground">
+                  {hasFilters
+                    ? "No points match these filters."
                     : "No infrastructure points yet. Add points using the map."}
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             ) : (
-              points.map((point) => (
-                <TableRow
-                  key={point.id}
-                  className="hover:bg-slate-50"
-                >
-                  <TableCell className="font-medium">{point.name}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="secondary"
-                      className={hexToTailwind(getTypeColor(point.type))}
-                    >
-                      {INFRASTRUCTURE_LABELS[point.type]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="secondary"
-                      className={hexToTailwind(
-                        getStatusColor(point.status)
-                      )}
-                    >
-                      {
-                        INFRASTRUCTURE_STATUS_LABELS[
-                          point.status as keyof typeof INFRASTRUCTURE_STATUS_LABELS
-                        ]
-                      }
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right text-slate-600 font-mono text-sm">
-                    {formatCoordinate(point.latitude)}
-                  </TableCell>
-                  <TableCell className="text-right text-slate-600 font-mono text-sm">
-                    {formatCoordinate(point.longitude)}
-                  </TableCell>
-                  {isAdmin && (
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onEdit?.(point)}
-                          title="Edit infrastructure point"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onDelete?.(point)}
-                          title="Delete infrastructure point"
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
+              points.map((point, i) => {
+                const isSelected = point.id === selectedId;
+                return (
+                  <tr
+                    key={point.id}
+                    data-point-id={point.id}
+                    aria-selected={isSelected}
+                    onClick={() => onSelect(point)}
+                    className={cn(
+                      "group h-8 cursor-pointer border-b border-zinc-100 transition-colors",
+                      isSelected ? "bg-brand/10" : "hover:bg-zinc-50"
+                    )}
+                  >
+                    <td className="pl-4 font-mono text-[11px] text-muted-foreground">
+                      {String((currentPage - 1) * pageSize + i + 1).padStart(2, "0")}
+                    </td>
+                    <td className="px-2 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelect(point);
+                        }}
+                        className={cn("text-left outline-none focus-visible:underline", isSelected && "font-medium")}
+                      >
+                        {point.name}
+                      </button>
+                    </td>
+                    <td className="px-2 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-zinc-700 uppercase">
+                        <span
+                          className="size-[7px] rounded-[2px]"
+                          style={{ backgroundColor: INFRASTRUCTURE_COLORS[point.type] }}
+                        />
+                        {INFRASTRUCTURE_LABELS[point.type]}
+                      </span>
+                    </td>
+                    <td className="px-2 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-zinc-700 uppercase">
+                        <span
+                          className="size-1.5 rounded-full"
+                          style={{ backgroundColor: INFRASTRUCTURE_STATUS_COLORS[point.status] }}
+                        />
+                        {INFRASTRUCTURE_STATUS_LABELS[point.status]}
+                      </span>
+                    </td>
+                    <td className="px-2 text-right font-mono">{point.latitude.toFixed(6)}</td>
+                    <td className="px-2 text-right font-mono">{point.longitude.toFixed(6)}</td>
+                    <td className="pr-3">
+                      <div className="flex justify-end gap-0.5">
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEdit(point);
+                            }}
+                            title="Edit point"
+                          >
+                            <Pencil className="size-3" />
+                            <span className="sr-only">Edit {point.name}</span>
+                          </Button>
+                        )}
+                        <ChevronRight
+                          aria-hidden="true"
+                          className={cn(
+                            "size-3.5 self-center text-muted-foreground",
+                            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          )}
+                        />
                       </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))
+                    </td>
+                  </tr>
+                );
+              })
             )}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-600">
-            Showing {(currentPage - 1) * pageSize + 1} to{" "}
-            {Math.min(currentPage * pageSize, totalCount)} of {totalCount}{" "}
-            infrastructure points
-          </p>
-          <div className="flex gap-2">
+      {/* Footer */}
+      <div className="sticky bottom-0 flex h-10 shrink-0 items-center gap-3 border-t bg-background px-4 font-mono text-[11px] text-muted-foreground">
+        <span className="flex-1">
+          {totalCount === 0
+            ? "0 POINTS"
+            : `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, totalCount)} OF ${totalCount}`}
+        </span>
+        <span className="hidden lg:inline">↑↓ SELECT · ESC CLOSE{isAdmin && " · E EDIT"}</span>
+        {totalPages > 1 && (
+          <div className="flex gap-1">
             <Button
               variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage - 1)}
+              size="icon"
+              className="size-7"
+              onClick={() => updateUrl({ page: currentPage - 1, point: "" })}
               disabled={currentPage <= 1 || isPending}
             >
-              <ChevronLeft className="h-4 w-4" />
-              Previous
+              <ChevronLeft className="size-4" />
+              <span className="sr-only">Previous page</span>
             </Button>
             <Button
               variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage + 1)}
+              size="icon"
+              className="size-7"
+              onClick={() => updateUrl({ page: currentPage + 1, point: "" })}
               disabled={currentPage >= totalPages || isPending}
             >
-              Next
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="size-4" />
+              <span className="sr-only">Next page</span>
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
