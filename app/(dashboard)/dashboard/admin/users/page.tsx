@@ -1,19 +1,13 @@
+import { cache } from "react";
 import { requireAdmin } from "@/lib/auth/roles";
-import { getUsers } from "@/lib/actions/users";
+import { getUserActivity, getUsers } from "@/lib/actions/users";
 import { UsersTable } from "./users-table";
-import { CreateUserDialog } from "./create-user-dialog";
+
+const getRequestTime = cache(() => Date.now());
 
 export default async function UsersPage() {
-  await requireAdmin();
-  const users = await getUsers();
+  const admin = await requireAdmin();
+  const [users, activity] = await Promise.all([getUsers(), getUserActivity()]);
 
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-end">
-        <CreateUserDialog />
-      </div>
-
-      <UsersTable users={users} />
-    </div>
-  );
+  return <UsersTable users={users} activity={activity} currentUserId={admin.id} now={getRequestTime()} />;
 }

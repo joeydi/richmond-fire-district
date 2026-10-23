@@ -18,6 +18,71 @@ export async function getUsers(): Promise<Profile[]> {
   return data ?? [];
 }
 
+export interface UserActivity {
+  lastSignInAt: string | null;
+  /** Meter, chlorine and reservoir readings entered in the last 30 days */
+  readings30d: number;
+  posts30d: number;
+  /** Most recent reading or post, if within the last 30 days */
+  lastEntryAt: string | null;
+}
+
+const ACTIVITY_WINDOW_DAYS = 30;
+
+/**
+ * Sign-in times from Supabase Auth plus recent data entry per user, for the
+ * admin user list.
+ */
+export async function getUserActivity(): Promise<Record<string, UserActivity>> {
+  await requireAdmin();
+
+  const supabase = await createClient();
+  const adminClient = createAdminClient();
+  const since = new Date(Date.now() - ACTIVITY_WINDOW_DAYS * 86_400_000).toISOString();
+
+  const readingTables = ["meter_readings", "chlorine_readings", "reservoir_readings"] as const;
+  const [authResult, posts, ...readings] = await Promise.all([
+    adminClient.auth.admin.listUsers({ perPage: 1000 }),
+    supabase.from("log_posts").select("author_id, created_at").gte("created_at", since),
+    ...readingTables.map((table) =>
+      supabase.from(table).select("created_by, created_at").gte("created_at", since)
+    ),
+  ]);
+
+  const activity: Record<string, UserActivity> = {};
+  const entry = (id: string) =>
+    (activity[id] ??= { lastSignInAt: null, readings30d: 0, posts30d: 0, lastEntryAt: null });
+  const touch = (record: UserActivity, at: string) => {
+    if (!record.lastEntryAt || at > record.lastEntryAt) record.lastEntryAt = at;
+  };
+
+  if (authResult.error) {
+    console.error("Error listing auth users:", authResult.error);
+  }
+  for (const user of authResult.data?.users ?? []) {
+    entry(user.id).lastSignInAt = user.last_sign_in_at ?? null;
+  }
+
+  for (const post of posts.data ?? []) {
+    if (!post.author_id) continue;
+    const record = entry(post.author_id);
+    record.posts30d++;
+    touch(record, post.created_at);
+  }
+
+  for (const result of readings) {
+    if (result.error) console.error("Error fetching reading activity:", result.error);
+    for (const reading of result.data ?? []) {
+      if (!reading.created_by) continue;
+      const record = entry(reading.created_by);
+      record.readings30d++;
+      touch(record, reading.created_at);
+    }
+  }
+
+  return activity;
+}
+
 export async function getUser(id: string): Promise<Profile | null> {
   await requireAdmin();
 

@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { createUser } from "@/lib/actions/users";
 import { toast } from "sonner";
-import { UserPlus } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { UserRole } from "@/lib/types/database";
 
 export function CreateUserDialog() {
@@ -57,9 +57,9 @@ export function CreateUserDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <UserPlus className="mr-2 h-4 w-4" />
-          Create User
+        <Button size="sm" className="h-7 px-2.5 text-xs">
+          <Plus className="size-3.5" />
+          User
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -67,8 +67,8 @@ export function CreateUserDialog() {
           <DialogHeader>
             <DialogTitle>Create User</DialogTitle>
             <DialogDescription>
-              Create a new user account. You can send them an invite email later
-              from the user list.
+              Creates the account without emailing them. Send a sign-in link
+              from the user list when they&rsquo;re ready.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -77,7 +77,7 @@ export function CreateUserDialog() {
               <Input
                 id="name"
                 type="text"
-                placeholder="John Doe"
+                placeholder="Full name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={loading}
