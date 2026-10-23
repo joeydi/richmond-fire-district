@@ -1,21 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -23,224 +15,198 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { toast } from "sonner";
-import {
-  createContact,
-  updateContact,
-  type Contact,
-  type ContactType,
-} from "@/lib/actions/contacts";
+import { cn } from "@/lib/utils";
+import { createContact, updateContact, type Contact, type ContactType } from "@/lib/actions/contacts";
+import { contactTypeDots, contactTypeLabels } from "./contact-types";
+
+const TYPES = ["resident", "business", "contractor", "utility", "emergency", "other"] as const satisfies readonly ContactType[];
 
 const formSchema = z.object({
-  name: z.string().min(1, "Name is required").max(255),
-  address: z.string().max(500).optional(),
+  name: z.string().trim().min(1, "Name is required").max(255),
+  contact_type: z.enum(TYPES),
   phone: z
     .string()
-    .regex(/^[\d\s\-\(\)\+\.]*$/, "Invalid phone number format")
-    .max(50)
-    .optional()
-    .or(z.literal("")),
-  email: z
-    .string()
-    .email("Invalid email format")
-    .max(255)
-    .optional()
-    .or(z.literal("")),
-  contact_type: z.enum([
-    "resident",
-    "business",
-    "contractor",
-    "utility",
-    "emergency",
-    "other",
-  ]),
-  notes: z.string().max(2000).optional(),
+    .trim()
+    .regex(/^[\d\s\-\(\)\+\.]*$/, "Use digits, spaces and ( ) - + . only")
+    .max(50),
+  email: z.union([z.literal(""), z.email("Enter a valid email address").max(255)]),
+  address: z.string().trim().max(500),
+  notes: z.string().max(2000),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormData = z.infer<typeof formSchema>;
 
-interface ContactFormProps {
-  contact?: Contact;
-  contactTypes: { value: ContactType; label: string }[];
+const labelClass = "font-mono text-[10px] font-normal tracking-[0.08em] text-muted-foreground uppercase";
+
+function FieldError({ message }: { message?: string }) {
+  return message ? <p className="text-xs text-red-600">{message}</p> : null;
 }
 
-export function ContactForm({ contact, contactTypes }: ContactFormProps) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+interface ContactFormProps {
+  /** Omit to create a new contact */
+  contact?: Contact | null;
+  onCancel: () => void;
+  /** Called with the saved contact's id */
+  onSaved: (id: string) => void;
+}
+
+/** Edit or create form for the contacts side sheet */
+export function ContactForm({ contact, onCancel, onSaved }: ContactFormProps) {
   const isEditing = !!contact;
 
-  const form = useForm<FormValues>({
+  const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: contact?.name || "",
-      address: contact?.address || "",
-      phone: contact?.phone || "",
-      email: contact?.email || "",
-      contact_type: contact?.contact_type || "resident",
-      notes: contact?.notes || "",
+      name: contact?.name ?? "",
+      contact_type: contact?.contact_type ?? "resident",
+      phone: contact?.phone ?? "",
+      email: contact?.email ?? "",
+      address: contact?.address ?? "",
+      notes: contact?.notes ?? "",
     },
   });
+  const { errors, isSubmitting, isDirty } = form.formState;
+  const contactType = useWatch({ control: form.control, name: "contact_type" });
 
-  const onSubmit = (values: FormValues) => {
-    startTransition(async () => {
-      const input = {
-        name: values.name,
-        address: values.address || null,
-        phone: values.phone || null,
-        email: values.email || null,
-        contact_type: values.contact_type,
-        notes: values.notes || null,
-      };
-
-      const result = isEditing
-        ? await updateContact(contact.id, input)
-        : await createContact(input);
-
-      if (result.success) {
-        toast.success(
-          isEditing ? "Contact updated successfully" : "Contact created successfully"
-        );
-        router.push("/dashboard/contacts");
-      } else {
-        toast.error(result.error || "An error occurred");
-      }
-    });
+  const onSubmit = async (data: FormData) => {
+    const input = {
+      name: data.name,
+      contact_type: data.contact_type,
+      phone: data.phone || null,
+      email: data.email || null,
+      address: data.address || null,
+      notes: data.notes.trim() || null,
+    };
+    const result = isEditing
+      ? { ...(await updateContact(contact.id, input)), id: contact.id }
+      : await createContact(input);
+    const { id } = result;
+    if (!result.success || !id) {
+      toast.error(result.error ?? "Could not save contact");
+      return;
+    }
+    toast.success(isEditing ? "Contact updated" : "Contact created");
+    onSaved(id);
   };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid gap-6 sm:grid-cols-2">
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Name *</FormLabel>
-                <FormControl>
-                  <Input placeholder="John Doe" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+    <form onSubmit={form.handleSubmit(onSubmit)} className="flex h-full flex-col">
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-3.5">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="contact-name" className={labelClass}>
+            Name
+          </Label>
+          <Input
+            id="contact-name"
+            placeholder="e.g. Jane Smith"
+            autoFocus={!isEditing}
+            aria-invalid={!!errors.name}
+            className="h-8 text-[13px]"
+            {...form.register("name")}
           />
-
-          <FormField
-            control={form.control}
-            name="contact_type"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Contact Type *</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a type" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {contactTypes.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="phone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Phone</FormLabel>
-                <FormControl>
-                  <Input
-                    type="tel"
-                    placeholder="(555) 123-4567"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input
-                    type="email"
-                    placeholder="john@example.com"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <FieldError message={errors.name?.message} />
         </div>
 
-        <FormField
-          control={form.control}
-          name="address"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Address</FormLabel>
-              <FormControl>
-                <Input placeholder="123 Main St, Richmond, VT 05477" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="notes"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Notes</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Additional notes about this contact..."
-                  rows={4}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <div className="flex gap-4">
-          <Button type="submit" disabled={isPending}>
-            {isPending
-              ? isEditing
-                ? "Saving..."
-                : "Creating..."
-              : isEditing
-                ? "Save Changes"
-                : "Create Contact"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push("/dashboard/contacts")}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="contact-type" className={labelClass}>
+            Type
+          </Label>
+          <Select
+            value={contactType}
+            onValueChange={(value) => form.setValue("contact_type", value as ContactType, { shouldDirty: true })}
           >
-            Cancel
-          </Button>
+            <SelectTrigger id="contact-type" size="sm" className="!h-8 w-full px-2 text-[13px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  <span className={cn("size-1.5 rounded-full", contactTypeDots[t])} />
+                  {contactTypeLabels[t]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </form>
-    </Form>
+
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="contact-phone" className={labelClass}>
+              Phone
+            </Label>
+            <Input
+              id="contact-phone"
+              type="tel"
+              autoComplete="off"
+              placeholder="(802) 555-0123"
+              aria-invalid={!!errors.phone}
+              className="h-8 font-mono text-[13px]"
+              {...form.register("phone")}
+            />
+            <FieldError message={errors.phone?.message} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="contact-email" className={labelClass}>
+              Email
+            </Label>
+            <Input
+              id="contact-email"
+              type="email"
+              autoComplete="off"
+              placeholder="name@example.com"
+              aria-invalid={!!errors.email}
+              className="h-8 font-mono text-[13px]"
+              {...form.register("email")}
+            />
+            <FieldError message={errors.email?.message} />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="contact-address" className={labelClass}>
+            Address
+          </Label>
+          <Input
+            id="contact-address"
+            autoComplete="off"
+            placeholder="e.g. 66 Robbins Mtn Rd"
+            aria-invalid={!!errors.address}
+            className="h-8 text-[13px]"
+            {...form.register("address")}
+          />
+          <FieldError message={errors.address?.message} />
+          <p className="text-xs text-muted-foreground">Links the contact to infrastructure named for this address.</p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="contact-notes" className={labelClass}>
+            Notes
+          </Label>
+          <Textarea
+            id="contact-notes"
+            rows={4}
+            placeholder="Gate codes, best time to call, who to ask for…"
+            aria-invalid={!!errors.notes}
+            className="min-h-0 text-[13px]"
+            {...form.register("notes")}
+          />
+          <FieldError message={errors.notes?.message} />
+        </div>
+      </div>
+
+      <div className="flex shrink-0 gap-2 border-t px-4 py-3">
+        <Button
+          type="submit"
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          disabled={isSubmitting || (isEditing && !isDirty)}
+        >
+          {isSubmitting ? "Saving…" : isEditing ? "Save changes" : "Create contact"}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={onCancel} disabled={isSubmitting}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

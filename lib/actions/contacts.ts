@@ -266,7 +266,6 @@ export async function updateContact(
   }
 
   revalidatePath("/dashboard/contacts");
-  revalidatePath(`/dashboard/contacts/${id}/edit`);
   return { success: true };
 }
 
@@ -289,20 +288,4 @@ export async function deleteContact(
 
   revalidatePath("/dashboard/contacts");
   return { success: true };
-}
-
-/**
- * Get contact type options for dropdowns
- */
-export async function getContactTypeOptions(): Promise<
-  { value: ContactType; label: string }[]
-> {
-  return [
-    { value: "resident", label: "Resident" },
-    { value: "business", label: "Business" },
-    { value: "contractor", label: "Contractor" },
-    { value: "utility", label: "Utility" },
-    { value: "emergency", label: "Emergency" },
-    { value: "other", label: "Other" },
-  ];
 }

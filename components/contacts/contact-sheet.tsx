@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { getLogDateParts } from "@/components/log/log-dates";
 import { INFRASTRUCTURE_COLORS } from "@/lib/types/infrastructure";
 import type { ContactDetails } from "@/lib/actions/contacts";
+import { ContactForm } from "./contact-form";
 import { contactTypeDots, contactTypeLabels } from "./contact-types";
 
 interface ContactSheetProps {
@@ -34,7 +35,12 @@ interface ContactSheetProps {
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  onEdit: () => void;
   onDelete: () => void;
+  /** Shows the edit form in place of the details */
+  editing: boolean;
+  onCancelEdit: () => void;
+  onSaved: () => void;
 }
 
 function SectionLabel({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
@@ -124,7 +130,11 @@ export function ContactSheet({
   onClose,
   onPrev,
   onNext,
+  onEdit,
   onDelete,
+  editing,
+  onCancelEdit,
+  onSaved,
 }: ContactSheetProps) {
   const { contact, infrastructure, mentions, mentionTerms } = details;
   const phoneDigits = contact.phone?.replace(/[^\d+]/g, "") || null;
@@ -135,21 +145,21 @@ export function ContactSheet({
     <aside aria-label={`${contact.name} details`} className="flex h-full w-full flex-col bg-background">
       {/* Sheet toolbar */}
       <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2 pl-3">
-        <Button variant="outline" size="icon" className="size-7" onClick={onPrev} disabled={!onPrev} title="Previous contact (↑)">
+        <Button variant="outline" size="icon" className="size-7" onClick={onPrev} disabled={!onPrev || editing} title="Previous contact (↑)">
           <ArrowUp className="size-3.5" />
           <span className="sr-only">Previous contact</span>
         </Button>
-        <Button variant="outline" size="icon" className="size-7" onClick={onNext} disabled={!onNext} title="Next contact (↓)">
+        <Button variant="outline" size="icon" className="size-7" onClick={onNext} disabled={!onNext || editing} title="Next contact (↓)">
           <ArrowDown className="size-3.5" />
           <span className="sr-only">Next contact</span>
         </Button>
-        <span className="ml-1.5 flex-1 font-mono text-[11px] text-muted-foreground">{positionLabel}</span>
-        {canEdit && (
+        <span className="ml-1.5 flex-1 font-mono text-[11px] text-muted-foreground">
+          {editing ? "EDITING" : positionLabel}
+        </span>
+        {canEdit && !editing && (
           <>
-            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" asChild>
-              <Link href={`/dashboard/contacts/${contact.id}/edit`}>
-                Edit <kbd className="ml-0.5">E</kbd>
-              </Link>
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={onEdit}>
+              Edit <kbd className="ml-0.5">E</kbd>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -173,124 +183,154 @@ export function ContactSheet({
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {/* Title */}
-        <div className="flex flex-col gap-1.5 px-4 pt-3.5 pb-3">
-          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.06em] text-zinc-700 uppercase">
-            <span className={cn("size-1.5 rounded-full", contactTypeDots[contact.contact_type])} />
-            {contactTypeLabels[contact.contact_type]}
-          </span>
-          <h2 className="text-[17px] font-semibold tracking-tight">{contact.name}</h2>
+      {editing ? (
+        <div className="min-h-0 flex-1">
+          <ContactForm contact={contact} onCancel={onCancelEdit} onSaved={onSaved} />
         </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          {/* Title */}
+          <div className="flex flex-col gap-1.5 px-4 pt-3.5 pb-3">
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.06em] text-zinc-700 uppercase">
+              <span className={cn("size-1.5 rounded-full", contactTypeDots[contact.contact_type])} />
+              {contactTypeLabels[contact.contact_type]}
+            </span>
+            <h2 className="text-[17px] font-semibold tracking-tight">{contact.name}</h2>
+          </div>
 
-        {/* Quick actions */}
-        <div className="flex gap-1.5 px-4 pb-3.5">
-          <QuickAction href={phoneDigits && `tel:${phoneDigits}`} icon={Phone} label="Call" />
-          <QuickAction href={phoneDigits && `sms:${phoneDigits}`} icon={MessageSquare} label="Text" />
-          <QuickAction href={contact.email && `mailto:${contact.email}`} icon={Mail} label="Email" />
-        </div>
+          {/* Quick actions */}
+          <div className="flex gap-1.5 px-4 pb-3.5">
+            <QuickAction href={phoneDigits && `tel:${phoneDigits}`} icon={Phone} label="Call" />
+            <QuickAction href={phoneDigits && `sms:${phoneDigits}`} icon={MessageSquare} label="Text" />
+            <QuickAction href={contact.email && `mailto:${contact.email}`} icon={Mail} label="Email" />
+          </div>
 
-        {/* Details */}
-        <section aria-label="Contact details" className="flex flex-col gap-1 border-t border-zinc-100 px-4 py-3">
-          <dl className="flex flex-col">
-            <CopyRow label="PHONE" value={contact.phone} href={phoneDigits ? `tel:${phoneDigits}` : undefined} />
-            <CopyRow label="EMAIL" value={contact.email} href={contact.email ? `mailto:${contact.email}` : undefined} />
-            <CopyRow label="ADDRESS" value={contact.address} />
-          </dl>
-          {contact.address && (
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 self-start rounded-md border px-2 py-1 font-mono text-[10px] hover:bg-accent"
-            >
-              DIRECTIONS ↗
-            </a>
-          )}
-        </section>
+          {/* Details */}
+          <section aria-label="Contact details" className="flex flex-col gap-1 border-t border-zinc-100 px-4 py-3">
+            <dl className="flex flex-col">
+              <CopyRow label="PHONE" value={contact.phone} href={phoneDigits ? `tel:${phoneDigits}` : undefined} />
+              <CopyRow label="EMAIL" value={contact.email} href={contact.email ? `mailto:${contact.email}` : undefined} />
+              <CopyRow label="ADDRESS" value={contact.address} />
+            </dl>
+            {contact.address && (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 self-start rounded-md border px-2 py-1 font-mono text-[10px] hover:bg-accent"
+              >
+                DIRECTIONS ↗
+              </a>
+            )}
+          </section>
 
-        {/* Notes */}
-        <section aria-label="Notes" className="flex flex-col gap-1.5 border-t border-zinc-100 px-4 py-3">
-          <SectionLabel>Notes</SectionLabel>
-          {contact.notes ? (
-            <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{contact.notes}</p>
-          ) : canEdit ? (
-            <Link
-              href={`/dashboard/contacts/${contact.id}/edit`}
-              className="self-start text-xs text-muted-foreground hover:text-foreground"
-            >
-              No notes yet — <span className="underline">add one</span>
-            </Link>
-          ) : (
-            <p className="text-xs text-muted-foreground">No notes</p>
-          )}
-        </section>
+          {/* Notes */}
+          <section aria-label="Notes" className="flex flex-col gap-1.5 border-t border-zinc-100 px-4 py-3">
+            <SectionLabel>Notes</SectionLabel>
+            {contact.notes ? (
+              <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{contact.notes}</p>
+            ) : canEdit ? (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="self-start text-xs text-muted-foreground hover:text-foreground"
+              >
+                No notes yet — <span className="underline">add one</span>
+              </button>
+            ) : (
+              <p className="text-xs text-muted-foreground">No notes</p>
+            )}
+          </section>
 
-        {/* Related infrastructure */}
-        <section aria-label="Infrastructure at this address" className="flex flex-col gap-1 border-t border-zinc-100 px-4 py-3">
-          <SectionLabel aside={<span>{infrastructure.length}</span>}>Infrastructure at address</SectionLabel>
-          {infrastructure.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {contact.address ? "No points named for this address" : "No address on file"}
-            </p>
-          ) : (
-            <ul>
-              {infrastructure.map((point) => (
-                <li key={point.id}>
+          {/* Related infrastructure */}
+          <section aria-label="Infrastructure at this address" className="flex flex-col gap-1 border-t border-zinc-100 px-4 py-3">
+            <SectionLabel aside={<span>{infrastructure.length}</span>}>Infrastructure at address</SectionLabel>
+            {infrastructure.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {contact.address ? "No points named for this address" : "No address on file"}
+              </p>
+            ) : (
+              <ul>
+                {infrastructure.map((point) => (
+                  <li key={point.id}>
+                    <Link
+                      href={`/dashboard/infrastructure?point=${point.id}`}
+                      className="-mx-1.5 flex h-7 items-center gap-2 rounded-md px-1.5 text-xs hover:bg-accent"
+                    >
+                      <span
+                        className="size-[7px] shrink-0 rounded-[2px]"
+                        style={{ backgroundColor: INFRASTRUCTURE_COLORS[point.type] }}
+                      />
+                      <span className="flex-1 truncate">{point.name}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground uppercase">{point.status}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* Log mentions */}
+          <section aria-label="Mentioned in log" className="flex flex-col gap-1.5 border-t border-zinc-100 px-4 py-3">
+            <SectionLabel aside={<span>{mentions.length}</span>}>Mentioned in log</SectionLabel>
+            {mentions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No posts mention {mentionTerms.map((t) => `“${t}”`).join(" or ")}
+              </p>
+            ) : (
+              mentions.map((mention) => {
+                const { date, time } = getLogDateParts(mention.created_at);
+                return (
                   <Link
-                    href={`/dashboard/infrastructure?point=${point.id}`}
-                    className="-mx-1.5 flex h-7 items-center gap-2 rounded-md px-1.5 text-xs hover:bg-accent"
+                    key={mention.id}
+                    href={`/dashboard/log/${mention.id}`}
+                    className="flex flex-col gap-1 rounded-md border px-2.5 py-2 transition-colors hover:bg-zinc-50"
                   >
-                    <span
-                      className="size-[7px] shrink-0 rounded-[2px]"
-                      style={{ backgroundColor: INFRASTRUCTURE_COLORS[point.type] }}
-                    />
-                    <span className="flex-1 truncate">{point.name}</span>
-                    <span className="font-mono text-[10px] text-muted-foreground uppercase">{point.status}</span>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {date} {time} · {mention.authorName}
+                    </span>
+                    <span className="text-xs leading-relaxed">
+                      {mention.before}
+                      <mark className="rounded-[2px] bg-amber-100 px-0.5 text-inherit">{mention.match}</mark>
+                      {mention.after}
+                    </span>
                   </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                );
+              })
+            )}
+          </section>
 
-        {/* Log mentions */}
-        <section aria-label="Mentioned in log" className="flex flex-col gap-1.5 border-t border-zinc-100 px-4 py-3">
-          <SectionLabel aside={<span>{mentions.length}</span>}>Mentioned in log</SectionLabel>
-          {mentions.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No posts mention {mentionTerms.map((t) => `“${t}”`).join(" or ")}
-            </p>
-          ) : (
-            mentions.map((mention) => {
-              const { date, time } = getLogDateParts(mention.created_at);
-              return (
-                <Link
-                  key={mention.id}
-                  href={`/dashboard/log/${mention.id}`}
-                  className="flex flex-col gap-1 rounded-md border px-2.5 py-2 transition-colors hover:bg-zinc-50"
-                >
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {date} {time} · {mention.authorName}
-                  </span>
-                  <span className="text-xs leading-relaxed">
-                    {mention.before}
-                    <mark className="rounded-[2px] bg-amber-100 px-0.5 text-inherit">{mention.match}</mark>
-                    {mention.after}
-                  </span>
-                </Link>
-              );
-            })
-          )}
-        </section>
-
-        <div className="border-t border-zinc-100 px-4 py-3 font-mono text-[10px] text-muted-foreground">
-          ADDED {added.date} · UPDATED {updated.date}
+          <div className="border-t border-zinc-100 px-4 py-3 font-mono text-[10px] text-muted-foreground">
+            ADDED {added.date} · UPDATED {updated.date}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="hidden h-9 shrink-0 items-center border-t px-4 font-mono text-[10px] text-muted-foreground lg:flex">
-        ESC CLOSE · ↑↓ NAVIGATE{canEdit && " · E EDIT"}
+        {editing ? "ESC CANCEL" : <>ESC CLOSE · ↑↓ NAVIGATE{canEdit && " · E EDIT"}</>}
+      </div>
+    </aside>
+  );
+}
+
+/** The sheet's create mode, opened from the toolbar's + Contact */
+export function NewContactSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (id: string) => void }) {
+  return (
+    <aside aria-label="New contact" className="flex h-full w-full flex-col bg-background">
+      <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2 pl-4">
+        <span className="flex-1 font-mono text-[11px] tracking-[0.06em] text-muted-foreground uppercase">
+          New contact
+        </span>
+        <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" onClick={onClose} title="Close (Esc)">
+          <X className="size-4" />
+          <span className="sr-only">Close</span>
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <ContactForm onCancel={onClose} onSaved={onSaved} />
+      </div>
+      <div className="hidden h-9 shrink-0 items-center border-t px-4 font-mono text-[10px] text-muted-foreground lg:flex">
+        ESC CANCEL
       </div>
     </aside>
   );

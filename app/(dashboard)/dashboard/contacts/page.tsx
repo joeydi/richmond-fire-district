@@ -5,6 +5,7 @@ import {
   type ContactType,
 } from "@/lib/actions/contacts";
 import { canEdit } from "@/lib/auth/roles";
+import { NEW_CONTACT } from "@/components/contacts/contact-types";
 import { ContactsView } from "./contacts-view";
 
 interface ContactsPageProps {
@@ -26,6 +27,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
   const sortOrder = (params.sortOrder as "asc" | "desc") || "asc";
   const page = parseInt(params.page || "1", 10);
   const pageSize = 100;
+  const creating = params.contact === NEW_CONTACT;
 
   const [{ data: contacts, count }, userCanEdit, details] = await Promise.all([
     getContacts({
@@ -37,7 +39,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
       offset: (page - 1) * pageSize,
     }),
     canEdit(),
-    params.contact ? getContactDetails(params.contact) : null,
+    params.contact && !creating ? getContactDetails(params.contact) : null,
   ]);
 
   return (
@@ -52,6 +54,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
       sortOrder={sortOrder}
       canEdit={userCanEdit}
       details={details}
+      creating={creating && userCanEdit}
     />
   );
 }

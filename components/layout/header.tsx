@@ -15,7 +15,6 @@ const TITLE_MAP: Record<string, string> = {
   "/dashboard/readings/reservoir": "Reservoir",
   "/dashboard/readings/import": "Import Readings",
   "/dashboard/contacts": "Contacts",
-  "/dashboard/contacts/new": "Add New Contact",
   "/dashboard/log": "Log",
   "/dashboard/log/new": "New Post",
   "/dashboard/reports": "Reports",
@@ -30,9 +29,6 @@ const TITLE_MAP: Record<string, string> = {
 function getPageTitle(pathname: string): string {
   if (TITLE_MAP[pathname]) {
     return TITLE_MAP[pathname];
-  }
-  if (/^\/dashboard\/contacts\/[^/]+\/edit$/.test(pathname)) {
-    return "Edit Contact";
   }
   if (/^\/dashboard\/log\/[^/]+\/edit$/.test(pathname)) {
     return "Edit Post";

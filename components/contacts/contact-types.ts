@@ -1,5 +1,8 @@
 import type { ContactType } from "@/lib/actions/contacts";
 
+/** `?contact=` value that opens the sheet on the new-contact form */
+export const NEW_CONTACT = "new";
+
 export const contactTypeLabels: Record<ContactType, string> = {
   resident: "Resident",
   business: "Business",

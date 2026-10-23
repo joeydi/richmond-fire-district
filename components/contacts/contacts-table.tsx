@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,6 +44,8 @@ interface ContactsTableProps {
   canEdit: boolean;
   selectedId: string | null;
   onSelect: (contact: Contact) => void;
+  onCreate: () => void;
+  onEdit: (contact: Contact) => void;
   onDelete?: (contact: Contact) => void;
 }
 
@@ -120,6 +121,8 @@ export function ContactsTable({
   canEdit,
   selectedId,
   onSelect,
+  onCreate,
+  onEdit,
   onDelete,
 }: ContactsTableProps) {
   const router = useRouter();
@@ -166,7 +169,6 @@ export function ContactsTable({
     updateUrl({ sortBy: column, sortOrder: newOrder });
   };
 
-  const editHref = (contact: Contact) => `/dashboard/contacts/${contact.id}/edit`;
   const sortProps = { sortBy, sortOrder, onSort: handleSort };
   const emptyMessage = hasFilters
     ? "No contacts match these filters."
@@ -175,11 +177,18 @@ export function ContactsTable({
   const actions = (contact: Contact) =>
     canEdit && (
       <div className="flex justify-end gap-0.5">
-        <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" asChild>
-          <Link href={editHref(contact)} onClick={(e) => e.stopPropagation()} title="Edit contact">
-            <Pencil className="size-3" />
-            <span className="sr-only">Edit {contact.name}</span>
-          </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 text-muted-foreground"
+          title="Edit contact"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(contact);
+          }}
+        >
+          <Pencil className="size-3" />
+          <span className="sr-only">Edit {contact.name}</span>
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -250,11 +259,9 @@ export function ContactsTable({
           {totalCount} {totalCount === 1 ? "CONTACT" : "CONTACTS"}
         </span>
         {canEdit && (
-          <Button size="sm" className="h-7 px-2.5 text-xs" asChild>
-            <Link href="/dashboard/contacts/new">
-              <Plus className="size-3.5" />
-              Contact
-            </Link>
+          <Button size="sm" className="h-7 px-2.5 text-xs" onClick={onCreate}>
+            <Plus className="size-3.5" />
+            Contact
           </Button>
         )}
       </div>
