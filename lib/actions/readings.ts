@@ -201,6 +201,86 @@ export async function getReservoirs() {
   return data ?? [];
 }
 
+export interface LastReading {
+  value: number;
+  recordedAt: string;
+}
+
+export interface DailyRoundContext {
+  meters: { id: string; name: string; last: LastReading | null }[];
+  reservoirs: {
+    id: string;
+    name: string;
+    max_level_inches: number | null;
+    last: LastReading | null;
+  }[];
+  chlorine: LastReading | null;
+}
+
+/**
+ * Everything the daily round form shows alongside its inputs: each meter's and
+ * reservoir's most recent reading, and the most recent chlorine residual.
+ */
+export async function getDailyRoundContext(): Promise<DailyRoundContext> {
+  const supabase = await createClient();
+
+  const [meters, reservoirs, chlorineResult] = await Promise.all([
+    getMeters(),
+    getReservoirs(),
+    supabase
+      .from("chlorine_readings")
+      .select("residual_level, recorded_at")
+      .order("recorded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const [meterLasts, reservoirLasts] = await Promise.all([
+    Promise.all(
+      meters.map((meter) =>
+        supabase
+          .from("meter_readings")
+          .select("reading_value, recorded_at")
+          .eq("meter_id", meter.id)
+          .order("recorded_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      )
+    ),
+    Promise.all(
+      reservoirs.map((reservoir) =>
+        supabase
+          .from("reservoir_readings")
+          .select("level_inches, recorded_at")
+          .eq("reservoir_id", reservoir.id)
+          .order("recorded_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      )
+    ),
+  ]);
+
+  return {
+    meters: meters.map((meter, i) => {
+      const row = meterLasts[i].data;
+      return {
+        ...meter,
+        last: row ? { value: row.reading_value, recordedAt: row.recorded_at } : null,
+      };
+    }),
+    reservoirs: reservoirs.map((reservoir, i) => {
+      const row = reservoirLasts[i].data;
+      return {
+        ...reservoir,
+        last: row ? { value: row.level_inches, recordedAt: row.recorded_at } : null,
+      };
+    }),
+    chlorine: chlorineResult.data
+      ? { value: chlorineResult.data.residual_level, recordedAt: chlorineResult.data.recorded_at }
+      : null,
+  };
+}
+
 export async function getInfrastructureLocations() {
   const supabase = await createClient();
   const { data } = await supabase
