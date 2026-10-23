@@ -269,6 +269,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_MAPBOX_TOKEN=
 ```
 
+Optional for faster session checks (public keys from
+`{NEXT_PUBLIC_SUPABASE_URL}/auth/v1/.well-known/jwks.json`; lets cold server
+instances verify sessions without fetching them, see `lib/supabase/jwks.ts`):
+```
+SUPABASE_JWKS={"keys":[...]}
+```
+
 Optional for notifications (email/SMS):
 ```
 # SendGrid (email notifications)
