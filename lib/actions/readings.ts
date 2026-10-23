@@ -325,6 +325,8 @@ export interface ReservoirReadingRow {
   recorded_at: string;
   notes: string | null;
   reservoir_name: string | null;
+  /** Used to derive level_percent when a reading is edited */
+  reservoir_max_inches: number | null;
 }
 
 export async function getMeterReadingsHistory(
@@ -421,7 +423,7 @@ export async function getReservoirReadingsHistory(
     }
 
     // Fetch reservoir names separately
-    let reservoirNames: Record<string, string> = {};
+    let reservoirInfo: Record<string, { name: string; max_level_inches: number | null }> = {};
     const validReservoirIds = (data as Array<{ reservoir_id: string | null }>)
       .map(r => r.reservoir_id)
       .filter((id): id is string => id !== null);
@@ -430,14 +432,14 @@ export async function getReservoirReadingsHistory(
       const uniqueIds = [...new Set(validReservoirIds)];
       const { data: reservoirs, error: resError } = await supabase
         .from("reservoirs")
-        .select("id, name")
+        .select("id, name, max_level_inches")
         .in("id", uniqueIds);
 
       if (resError) {
         console.error("Error fetching reservoir names:", resError);
       } else if (reservoirs) {
-        reservoirNames = Object.fromEntries(
-          reservoirs.map((r: { id: string; name: string }) => [r.id, r.name])
+        reservoirInfo = Object.fromEntries(
+          reservoirs.map((r: { id: string; name: string; max_level_inches: number | null }) => [r.id, r])
         );
       }
     }
@@ -449,7 +451,8 @@ export async function getReservoirReadingsHistory(
       level_percent: r.level_percent,
       recorded_at: r.recorded_at,
       notes: r.notes,
-      reservoir_name: r.reservoir_id ? (reservoirNames[r.reservoir_id] ?? null) : null,
+      reservoir_name: r.reservoir_id ? (reservoirInfo[r.reservoir_id]?.name ?? null) : null,
+      reservoir_max_inches: r.reservoir_id ? (reservoirInfo[r.reservoir_id]?.max_level_inches ?? null) : null,
     }));
 
     return { data: readings, count: count ?? 0 };

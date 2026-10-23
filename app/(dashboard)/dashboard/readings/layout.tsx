@@ -12,7 +12,7 @@ export default async function ReadingsLayout({
   const canEdit = await isEditorOrAdmin();
 
   return (
-    <div data-flush className="flex min-h-full flex-col">
+    <div data-flush className="flex min-h-full flex-col has-[[data-fill]]:h-full">
       <div className="flex items-center gap-2 border-b px-4 py-2">
         <ReadingsNav />
         <div className="hidden flex-1 sm:block" />
@@ -26,7 +26,7 @@ export default async function ReadingsLayout({
         )}
       </div>
       {/* Entry and history views are full-bleed (data-bleed); import keeps page padding */}
-      <div className="flex flex-1 flex-col p-4 has-[[data-bleed]]:p-0 lg:p-6">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col p-4 has-[[data-bleed]]:p-0 lg:p-6">{children}</div>
     </div>
   );
 }
