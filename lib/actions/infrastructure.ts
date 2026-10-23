@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/auth/roles";
+import { compassBearing, distanceMeters } from "@/lib/geo";
+import { findLogMentions, type LogMention } from "@/lib/log-mentions";
 import type {
   InfrastructurePoint,
   InfrastructureImage,
@@ -160,6 +162,7 @@ export async function getInfrastructurePointById(
 export interface GetInfrastructurePointsOptions {
   search?: string;
   type?: InfrastructureType | "all";
+  status?: InfrastructureStatus | "all";
   sortBy?: keyof InfrastructurePoint;
   sortOrder?: "asc" | "desc";
   limit?: number;
@@ -172,6 +175,7 @@ export async function getInfrastructurePoints(
   const {
     search,
     type,
+    status,
     sortBy = "name",
     sortOrder = "asc",
     limit = 50,
@@ -195,6 +199,24 @@ export async function getInfrastructurePoints(
   if (type && type !== "all") {
     query = query.eq("type", type);
   }
+  if (status && status !== "all") {
+    query = query.eq("status", status);
+  }
+
+  // Names lead with house numbers ("8 Robbins…", "114 Robbins…"), which
+  // Postgres sorts as text. Sort those in JS with numeric collation instead;
+  // the table is small enough to fetch whole.
+  if (sortBy === "name") {
+    const { data, error, count } = await query;
+    if (error) {
+      console.error("Error fetching infrastructure points:", error);
+      return { data: [], count: 0 };
+    }
+    const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+    const sorted = (data ?? []).sort((a, b) => collator.compare(a.name, b.name));
+    if (sortOrder === "desc") sorted.reverse();
+    return { data: sorted.slice(offset, offset + limit), count: count ?? 0 };
+  }
 
   // Apply sorting
   query = query.order(sortBy, { ascending: sortOrder === "asc" });
@@ -210,6 +232,73 @@ export async function getInfrastructurePoints(
   }
 
   return { data: data ?? [], count: count ?? 0 };
+}
+
+export interface NearbyPoint {
+  id: string;
+  name: string;
+  type: InfrastructureType;
+  latitude: number;
+  longitude: number;
+  distanceM: number;
+  bearing: string;
+}
+
+export interface InfrastructurePointDetails {
+  point: InfrastructurePoint;
+  /** Every other point within the map preview radius, nearest first */
+  nearby: NearbyPoint[];
+  mentions: LogMention[];
+  mentionTerm: string;
+}
+
+const NEARBY_RADIUS_M = 150;
+
+/**
+ * Text a log post would use to refer to a point: the house number and street
+ * ("114 Robbins" also matches "114 Robbins Mnt Ext"), else the name without
+ * its type word ("Extension Flush" for "Extension Flush Hydrant").
+ */
+function getMentionTerm(name: string): string {
+  const address = name.match(/^(\d+[A-Za-z]?)\s+([A-Za-z]+)/);
+  if (address) return `${address[1]} ${address[2]}`;
+  const stripped = name
+    .replace(/\b(shutoff|valve|hydrant|well|meter|reservoir)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return stripped || name;
+}
+
+export async function getInfrastructurePointDetails(
+  id: string
+): Promise<InfrastructurePointDetails | null> {
+  const supabase = await createClient();
+
+  const [pointResult, allResult] = await Promise.all([
+    supabase.from("infrastructure_points").select("*").eq("id", id).single(),
+    supabase.from("infrastructure_points").select("id, name, type, latitude, longitude"),
+  ]);
+
+  if (pointResult.error || !pointResult.data) {
+    console.error("Error fetching infrastructure point:", pointResult.error);
+    return null;
+  }
+  const point = pointResult.data as InfrastructurePoint;
+
+  const nearby: NearbyPoint[] = (allResult.data ?? [])
+    .filter((other) => other.id !== point.id)
+    .map((other) => ({
+      ...other,
+      distanceM: distanceMeters(point.latitude, point.longitude, other.latitude, other.longitude),
+      bearing: compassBearing(point.latitude, point.longitude, other.latitude, other.longitude),
+    }))
+    .filter((other) => other.distanceM <= NEARBY_RADIUS_M)
+    .sort((a, b) => a.distanceM - b.distanceM);
+
+  const mentionTerm = getMentionTerm(point.name);
+  const mentions = await findLogMentions(supabase, [mentionTerm]);
+
+  return { point, nearby, mentions, mentionTerm };
 }
 
 // ============================================

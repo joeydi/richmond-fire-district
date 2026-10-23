@@ -1,18 +1,27 @@
-import { AnimatedMap } from "@/components/map/animated-map";
-import { LoginForm } from "@/components/auth/login-form";
+import { AuthShell } from "@/components/auth/auth-shell";
+import { SignInPanel } from "@/components/auth/sign-in-panel";
 
-export default function Home() {
+const NOTICES = {
+  auth_callback_error: { tone: "error", text: "Google sign-in didn't complete. Please try again." },
+  password_updated: { tone: "success", text: "Password updated. Sign in with your new password." },
+} as const;
+
+type NoticeKey = keyof typeof NOTICES;
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; error?: string; notice?: string }>;
+}) {
+  const { view, error, notice } = await searchParams;
+  const key = error ?? notice;
+
   return (
-    <div className="flex min-h-screen">
-      {/* Left side - Login Form */}
-      <div className="flex w-full flex-col items-center justify-center bg-white px-8 lg:w-1/2">
-        <LoginForm />
-      </div>
-
-      {/* Right side - Animated 3D Map */}
-      <div className="hidden lg:block lg:w-1/2">
-        <AnimatedMap />
-      </div>
-    </div>
+    <AuthShell>
+      <SignInPanel
+        view={view === "forgot" ? "forgot" : "sign-in"}
+        notice={key && key in NOTICES ? NOTICES[key as NoticeKey] : null}
+      />
+    </AuthShell>
   );
 }

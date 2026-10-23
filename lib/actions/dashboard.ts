@@ -151,10 +151,23 @@ export async function getDashboardStatsFallback() {
 
   const { data: latestReservoir } = await supabase
     .from("reservoir_readings")
-    .select("recorded_at, level_inches")
+    .select("recorded_at, level_inches, reservoirs (name, max_level_inches)")
     .order("recorded_at", { ascending: false })
     .limit(1)
     .single();
+  const reservoir = latestReservoir?.reservoirs as unknown as {
+    name: string;
+    max_level_inches: number | null;
+  } | null;
+
+  // Pump flow (gpm) from the most recent back-to-back reading pair
+  const { data: latestPumpRate } = await supabase
+    .from("meter_readings")
+    .select("production_rate, recorded_at")
+    .not("production_rate", "is", null)
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   // Find the most recent reading across all types
   const timestamps = [
@@ -236,6 +249,10 @@ export async function getDashboardStatsFallback() {
     latestProductionMeter,
     latestChlorine: latestChlorine?.residual_level ?? null,
     reservoirLevel: latestReservoir?.level_inches ?? null,
+    reservoirName: reservoir?.name ?? null,
+    reservoirMaxInches: reservoir?.max_level_inches ?? null,
+    latestPumpRateGpm: latestPumpRate?.production_rate ?? null,
+    latestPumpRateAt: latestPumpRate?.recorded_at ?? null,
   };
 }
 
@@ -246,7 +263,10 @@ export async function getRecentReadingsFallback(limit: number = 5) {
     .from("meter_readings")
     .select(`
       id,
+      meter_id,
       reading_value,
+      production_rate,
+      interpolated,
       recorded_at,
       meters (name)
     `)
@@ -258,6 +278,7 @@ export async function getRecentReadingsFallback(limit: number = 5) {
     .select(`
       id,
       residual_level,
+      interpolated,
       recorded_at,
       infrastructure_points (name)
     `)

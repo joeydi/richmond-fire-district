@@ -1,19 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Bell, Mail, MessageSquare, FileText, Droplets, Gauge, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -21,8 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { updateNotificationPreferences } from "@/lib/actions/notifications";
+import { SettingsSection, settingsLabelClass } from "@/components/settings/settings-nav";
+import { cn } from "@/lib/utils";
+import { updateNotificationPreferences, type NotificationPreferencesInput } from "@/lib/actions/notifications";
 import type { NotificationPreferences, DigestFrequency } from "@/lib/types/database";
+
+/** Form state: every field present, with the phone number as an editable string */
+type Preferences = Omit<Required<NotificationPreferencesInput>, "phone_number"> & { phone_number: string };
+type BooleanKey = { [K in keyof Preferences]: Preferences[K] extends boolean ? K : never }[keyof Preferences];
+
+const DAY_OPTIONS = [1, 2, 3, 5, 7, 14, 30];
 
 interface NotificationsFormProps {
   preferences: NotificationPreferences | null;
@@ -30,387 +30,285 @@ interface NotificationsFormProps {
   userEmail: string;
 }
 
-export function NotificationsForm({
-  preferences,
-  defaultPreferences,
-  userEmail,
-}: NotificationsFormProps) {
-  const initial = preferences ?? defaultPreferences;
+interface AlertRow {
+  title: string;
+  description: string;
+  enabled: BooleanKey;
+  email: BooleanKey;
+  sms: BooleanKey | null;
+}
 
-  const [saving, setSaving] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState(initial.phone_number ?? "");
+const ALERTS: AlertRow[] = [
+  {
+    title: "New log posts",
+    description: "When anyone posts to the log",
+    enabled: "notify_new_log_posts",
+    email: "notify_new_log_posts_email",
+    sms: "notify_new_log_posts_sms",
+  },
+  {
+    title: "Missing meter readings",
+    description: "When no meter reading has been entered",
+    enabled: "notify_missing_meter_readings",
+    email: "notify_missing_meter_readings_email",
+    sms: "notify_missing_meter_readings_sms",
+  },
+  {
+    title: "Missing chlorine readings",
+    description: "When no chlorine reading has been entered",
+    enabled: "notify_missing_chlorine_readings",
+    email: "notify_missing_chlorine_readings_email",
+    sms: "notify_missing_chlorine_readings_sms",
+  },
+  {
+    title: "Summary digest",
+    description: "Stats, latest readings and recent log posts",
+    enabled: "digest_enabled",
+    email: "digest_email",
+    sms: null,
+  },
+];
 
-  // Log post notifications
-  const [notifyNewLogPosts, setNotifyNewLogPosts] = useState(initial.notify_new_log_posts);
-  const [notifyNewLogPostsEmail, setNotifyNewLogPostsEmail] = useState(initial.notify_new_log_posts_email);
-  const [notifyNewLogPostsSms, setNotifyNewLogPostsSms] = useState(initial.notify_new_log_posts_sms);
+function toInput(source: NotificationsFormProps["defaultPreferences"]): Preferences {
+  return {
+    phone_number: source.phone_number ?? "",
+    notify_new_log_posts: source.notify_new_log_posts,
+    notify_new_log_posts_email: source.notify_new_log_posts_email,
+    notify_new_log_posts_sms: source.notify_new_log_posts_sms,
+    notify_missing_meter_readings: source.notify_missing_meter_readings,
+    notify_missing_meter_readings_email: source.notify_missing_meter_readings_email,
+    notify_missing_meter_readings_sms: source.notify_missing_meter_readings_sms,
+    missing_meter_reading_days: source.missing_meter_reading_days,
+    notify_missing_chlorine_readings: source.notify_missing_chlorine_readings,
+    notify_missing_chlorine_readings_email: source.notify_missing_chlorine_readings_email,
+    notify_missing_chlorine_readings_sms: source.notify_missing_chlorine_readings_sms,
+    missing_chlorine_reading_days: source.missing_chlorine_reading_days,
+    digest_enabled: source.digest_enabled,
+    digest_frequency: source.digest_frequency,
+    digest_email: source.digest_email,
+  };
+}
 
-  // Meter reading notifications
-  const [notifyMissingMeterReadings, setNotifyMissingMeterReadings] = useState(initial.notify_missing_meter_readings);
-  const [notifyMissingMeterReadingsEmail, setNotifyMissingMeterReadingsEmail] = useState(initial.notify_missing_meter_readings_email);
-  const [notifyMissingMeterReadingsSms, setNotifyMissingMeterReadingsSms] = useState(initial.notify_missing_meter_readings_sms);
-  const [missingMeterReadingDays, setMissingMeterReadingDays] = useState(initial.missing_meter_reading_days);
+function ChannelToggle({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex h-7 cursor-pointer items-center gap-1.5 rounded-md border px-2 font-mono text-[10px] tracking-[0.06em] uppercase sm:justify-center sm:border-0 sm:px-0",
+        checked && !disabled ? "border-brand/40 bg-brand/10 sm:bg-transparent" : "text-muted-foreground",
+        disabled && "cursor-not-allowed opacity-40"
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-brand"
+      />
+      <span className="sm:sr-only">{label}</span>
+    </label>
+  );
+}
 
-  // Chlorine reading notifications
-  const [notifyMissingChlorineReadings, setNotifyMissingChlorineReadings] = useState(initial.notify_missing_chlorine_readings);
-  const [notifyMissingChlorineReadingsEmail, setNotifyMissingChlorineReadingsEmail] = useState(initial.notify_missing_chlorine_readings_email);
-  const [notifyMissingChlorineReadingsSms, setNotifyMissingChlorineReadingsSms] = useState(initial.notify_missing_chlorine_readings_sms);
-  const [missingChlorineReadingDays, setMissingChlorineReadingDays] = useState(initial.missing_chlorine_reading_days);
+const thClass = "font-mono text-[10px] tracking-[0.06em] text-muted-foreground uppercase";
+// From md the first column plus the gap matches SettingsSection's 220px label
+// column and 32px gap, so the controls start on the same line as the fields above
+const gridClass =
+  "sm:grid sm:grid-cols-[minmax(0,1fr)_56px_56px_56px_112px] sm:items-center sm:gap-x-2 md:grid-cols-[244px_56px_56px_56px_120px_minmax(0,1fr)]";
 
-  // Digest preferences
-  const [digestEnabled, setDigestEnabled] = useState(initial.digest_enabled);
-  const [digestFrequency, setDigestFrequency] = useState<DigestFrequency>(initial.digest_frequency);
-  const [digestEmail, setDigestEmail] = useState(initial.digest_email);
+export function NotificationsForm({ preferences, defaultPreferences, userEmail }: NotificationsFormProps) {
+  const [saved, setSaved] = useState(() => toInput(preferences ?? defaultPreferences));
+  const [prefs, setPrefs] = useState(saved);
+  const [isSaving, startSaving] = useTransition();
 
-  const handleSave = async () => {
-    setSaving(true);
+  const set = <K extends keyof Preferences>(key: K, value: Preferences[K]) =>
+    setPrefs((current) => ({ ...current, [key]: value }));
 
-    try {
-      const result = await updateNotificationPreferences({
-        phone_number: phoneNumber || null,
+  const isDirty = JSON.stringify(prefs) !== JSON.stringify(saved);
+  const smsInUse = ALERTS.some((alert) => alert.sms && prefs[alert.enabled] && prefs[alert.sms]);
+  const missingPhone = smsInUse && !prefs.phone_number.trim();
+  const activeCount = ALERTS.filter((alert) => prefs[alert.enabled]).length;
 
-        notify_new_log_posts: notifyNewLogPosts,
-        notify_new_log_posts_email: notifyNewLogPostsEmail,
-        notify_new_log_posts_sms: notifyNewLogPostsSms,
-
-        notify_missing_meter_readings: notifyMissingMeterReadings,
-        notify_missing_meter_readings_email: notifyMissingMeterReadingsEmail,
-        notify_missing_meter_readings_sms: notifyMissingMeterReadingsSms,
-        missing_meter_reading_days: missingMeterReadingDays,
-
-        notify_missing_chlorine_readings: notifyMissingChlorineReadings,
-        notify_missing_chlorine_readings_email: notifyMissingChlorineReadingsEmail,
-        notify_missing_chlorine_readings_sms: notifyMissingChlorineReadingsSms,
-        missing_chlorine_reading_days: missingChlorineReadingDays,
-
-        digest_enabled: digestEnabled,
-        digest_frequency: digestFrequency,
-        digest_email: digestEmail,
-      });
-
+  const handleSave = () => {
+    startSaving(async () => {
+      const next = { ...prefs, phone_number: prefs.phone_number.trim() };
+      const result = await updateNotificationPreferences({ ...next, phone_number: next.phone_number || null });
       if (result.success) {
+        setSaved(next);
+        setPrefs(next);
         toast.success("Notification preferences saved");
       } else {
         toast.error(result.error || "Failed to save preferences");
       }
-    } catch {
-      toast.error("An unexpected error occurred");
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
-  const hasSmsEnabled = notifyNewLogPostsSms || notifyMissingMeterReadingsSms || notifyMissingChlorineReadingsSms;
+  const setting = (alert: AlertRow) => {
+    const disabled = !prefs[alert.enabled];
+    if (alert.enabled === "digest_enabled") {
+      return (
+        <Select
+          value={prefs.digest_frequency}
+          onValueChange={(v) => set("digest_frequency", v as DigestFrequency)}
+          disabled={disabled}
+        >
+          <SelectTrigger size="sm" className="!h-7 w-full px-2 text-xs" aria-label="Digest frequency">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="daily">Daily</SelectItem>
+            <SelectItem value="weekly">Weekly</SelectItem>
+          </SelectContent>
+        </Select>
+      );
+    }
+    const key =
+      alert.enabled === "notify_missing_meter_readings"
+        ? "missing_meter_reading_days"
+        : alert.enabled === "notify_missing_chlorine_readings"
+          ? "missing_chlorine_reading_days"
+          : null;
+    if (!key) return <span className="hidden text-center text-muted-foreground sm:block md:pl-2 md:text-left">—</span>;
+    return (
+      <Select value={String(prefs[key])} onValueChange={(v) => set(key, Number(v))} disabled={disabled}>
+        <SelectTrigger size="sm" className="!h-7 w-full px-2 text-xs" aria-label={`${alert.title} threshold`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {DAY_OPTIONS.map((d) => (
+            <SelectItem key={d} value={String(d)}>
+              After {d} {d === 1 ? "day" : "days"}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Contact Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Contact Information
-          </CardTitle>
-          <CardDescription>
-            Configure how you receive notifications
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={userEmail} disabled />
-            <p className="text-sm text-muted-foreground">
-              Email notifications will be sent to your account email
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone Number (for SMS)</Label>
-            <Input
-              id="phone"
-              type="tel"
-              placeholder="+1 (555) 123-4567"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-            />
-            <p className="text-sm text-muted-foreground">
-              Required for SMS notifications. Include country code.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* New Log Post Notifications */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            New Log Posts
-          </CardTitle>
-          <CardDescription>
-            Get notified when new log entries are posted
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Enable notifications</Label>
-              <p className="text-sm text-muted-foreground">
-                Receive alerts for new log posts
-              </p>
-            </div>
-            <Switch
-              checked={notifyNewLogPosts}
-              onCheckedChange={setNotifyNewLogPosts}
-            />
-          </div>
-          {notifyNewLogPosts && (
-            <div className="ml-4 space-y-3 border-l-2 border-muted pl-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <Label>Email</Label>
-                </div>
-                <Switch
-                  checked={notifyNewLogPostsEmail}
-                  onCheckedChange={setNotifyNewLogPostsEmail}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  <Label>SMS</Label>
-                </div>
-                <Switch
-                  checked={notifyNewLogPostsSms}
-                  onCheckedChange={setNotifyNewLogPostsSms}
-                />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Missing Meter Readings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Gauge className="h-5 w-5" />
-            Missing Meter Readings
-          </CardTitle>
-          <CardDescription>
-            Get notified when meter readings are overdue
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Enable notifications</Label>
-              <p className="text-sm text-muted-foreground">
-                Alert when no readings recorded
-              </p>
-            </div>
-            <Switch
-              checked={notifyMissingMeterReadings}
-              onCheckedChange={setNotifyMissingMeterReadings}
-            />
-          </div>
-          {notifyMissingMeterReadings && (
-            <div className="ml-4 space-y-4 border-l-2 border-muted pl-4">
-              <div className="space-y-2">
-                <Label htmlFor="meterDays">Days threshold</Label>
-                <Select
-                  value={String(missingMeterReadingDays)}
-                  onValueChange={(v) => setMissingMeterReadingDays(Number(v))}
-                >
-                  <SelectTrigger id="meterDays" className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 5, 7, 14, 30].map((d) => (
-                      <SelectItem key={d} value={String(d)}>
-                        {d} {d === 1 ? "day" : "days"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-muted-foreground">
-                  Notify after this many days without a reading
-                </p>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <Label>Email</Label>
-                </div>
-                <Switch
-                  checked={notifyMissingMeterReadingsEmail}
-                  onCheckedChange={setNotifyMissingMeterReadingsEmail}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  <Label>SMS</Label>
-                </div>
-                <Switch
-                  checked={notifyMissingMeterReadingsSms}
-                  onCheckedChange={setNotifyMissingMeterReadingsSms}
-                />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Missing Chlorine Readings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Droplets className="h-5 w-5" />
-            Missing Chlorine Readings
-          </CardTitle>
-          <CardDescription>
-            Get notified when chlorine readings are overdue
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Enable notifications</Label>
-              <p className="text-sm text-muted-foreground">
-                Alert when no readings recorded
-              </p>
-            </div>
-            <Switch
-              checked={notifyMissingChlorineReadings}
-              onCheckedChange={setNotifyMissingChlorineReadings}
-            />
-          </div>
-          {notifyMissingChlorineReadings && (
-            <div className="ml-4 space-y-4 border-l-2 border-muted pl-4">
-              <div className="space-y-2">
-                <Label htmlFor="chlorineDays">Days threshold</Label>
-                <Select
-                  value={String(missingChlorineReadingDays)}
-                  onValueChange={(v) => setMissingChlorineReadingDays(Number(v))}
-                >
-                  <SelectTrigger id="chlorineDays" className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 5, 7, 14, 30].map((d) => (
-                      <SelectItem key={d} value={String(d)}>
-                        {d} {d === 1 ? "day" : "days"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-muted-foreground">
-                  Notify after this many days without a reading
-                </p>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <Label>Email</Label>
-                </div>
-                <Switch
-                  checked={notifyMissingChlorineReadingsEmail}
-                  onCheckedChange={setNotifyMissingChlorineReadingsEmail}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  <Label>SMS</Label>
-                </div>
-                <Switch
-                  checked={notifyMissingChlorineReadingsSms}
-                  onCheckedChange={setNotifyMissingChlorineReadingsSms}
-                />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Digest Emails */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Summary Digest
-          </CardTitle>
-          <CardDescription>
-            Receive periodic summaries with stats, readings, and log entries
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Enable digest emails</Label>
-              <p className="text-sm text-muted-foreground">
-                Get periodic summary reports
-              </p>
-            </div>
-            <Switch
-              checked={digestEnabled}
-              onCheckedChange={setDigestEnabled}
-            />
-          </div>
-          {digestEnabled && (
-            <div className="ml-4 space-y-4 border-l-2 border-muted pl-4">
-              <div className="space-y-2">
-                <Label htmlFor="digestFrequency">Frequency</Label>
-                <Select
-                  value={digestFrequency}
-                  onValueChange={(v) => setDigestFrequency(v as DigestFrequency)}
-                >
-                  <SelectTrigger id="digestFrequency" className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <Label>Email</Label>
-                </div>
-                <Switch
-                  checked={digestEmail}
-                  onCheckedChange={setDigestEmail}
-                />
-              </div>
-              <div className="rounded-md bg-muted p-3">
-                <p className="text-sm text-muted-foreground">
-                  Digest includes: system statistics, latest meter readings,
-                  chlorine levels, reservoir levels, and recent log entries.
-                </p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Warning for SMS without phone */}
-      {hasSmsEnabled && !phoneNumber && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            You have SMS notifications enabled but no phone number set.
-            Please add your phone number above to receive SMS alerts.
+    <div className="flex flex-1 flex-col">
+      <SettingsSection title="Delivery" description="Where alerts are sent. Email always goes to your account address.">
+        <div className="flex flex-col gap-1.5">
+          <span className={settingsLabelClass}>Email</span>
+          <span className="font-mono text-[13px]">{userEmail}</span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="phone" className={settingsLabelClass}>
+            Phone for SMS
+          </Label>
+          <Input
+            id="phone"
+            type="tel"
+            autoComplete="tel"
+            placeholder="+1 802 555 0123"
+            value={prefs.phone_number}
+            onChange={(e) => set("phone_number", e.target.value)}
+            aria-invalid={missingPhone}
+            className="h-8 font-mono text-[13px]"
+          />
+          <p className={cn("text-xs", missingPhone ? "text-amber-700" : "text-muted-foreground")}>
+            {missingPhone
+              ? "SMS alerts are on, but there’s no number to send them to."
+              : "Include the country code."}
           </p>
         </div>
-      )}
+      </SettingsSection>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? "Saving..." : "Save preferences"}
-        </Button>
+      <section aria-label="Alerts" className="border-b">
+        <div className="flex items-baseline gap-2 px-4 pt-4 pb-2 lg:px-6">
+          <h2 className={thClass}>Alerts</h2>
+          <span className="font-mono text-[10px] text-muted-foreground">{activeCount} ON</span>
+        </div>
+        <div className={cn("hidden border-y bg-zinc-50 px-4 py-1.5 lg:px-6", gridClass)}>
+          <span className={thClass}>Alert</span>
+          <span className={cn(thClass, "text-center md:text-left")}>On</span>
+          <span className={cn(thClass, "text-center")}>Email</span>
+          <span className={cn(thClass, "text-center")}>SMS</span>
+          <span className={thClass}>When</span>
+        </div>
+        <ul>
+          {ALERTS.map((alert) => {
+            const enabled = prefs[alert.enabled];
+            const switchId = `alert-${alert.enabled}`;
+            return (
+              <li
+                key={alert.enabled}
+                className={cn("flex flex-col gap-2 border-b border-zinc-100 px-4 py-2.5 last:border-b-0 lg:px-6", gridClass)}
+              >
+                <div className="flex items-center gap-3 sm:contents">
+                  <label htmlFor={switchId} className="flex min-w-0 flex-1 cursor-pointer flex-col">
+                    <span className="text-[13px] font-medium">{alert.title}</span>
+                    <span className="text-xs text-muted-foreground">{alert.description}</span>
+                  </label>
+                  <div className="flex sm:justify-center md:justify-start">
+                    <Switch
+                      id={switchId}
+                      checked={enabled}
+                      onCheckedChange={(checked) => set(alert.enabled, checked)}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 sm:contents",
+                    // Phones only show channel settings for alerts that are on
+                    !enabled && "hidden sm:contents"
+                  )}
+                >
+                  <ChannelToggle
+                    label="Email"
+                    checked={prefs[alert.email]}
+                    disabled={!enabled}
+                    onChange={(checked) => set(alert.email, checked)}
+                  />
+                  {alert.sms ? (
+                    <ChannelToggle
+                      label="SMS"
+                      checked={prefs[alert.sms]}
+                      disabled={!enabled}
+                      onChange={(checked) => set(alert.sms!, checked)}
+                    />
+                  ) : (
+                    <span className="hidden text-center text-muted-foreground sm:block">—</span>
+                  )}
+                  <div className="ml-auto w-[120px] sm:ml-0 sm:w-auto">{setting(alert)}</div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <div className="sticky bottom-0 z-10 flex items-center gap-2 border-b bg-background/95 px-4 py-2.5 backdrop-blur md:grid md:grid-cols-[244px_minmax(0,1fr)] lg:px-6">
+        <span className={cn("flex-1 font-mono text-[11px]", isDirty ? "text-amber-700" : "text-muted-foreground")}>
+          {isDirty ? "UNSAVED CHANGES" : "ALL CHANGES SAVED"}
+        </span>
+        <div className="flex gap-2">
+          <Button size="sm" className="h-7 px-2.5 text-xs" onClick={handleSave} disabled={isSaving || !isDirty}>
+            {isSaving ? "Saving…" : "Save preferences"}
+          </Button>
+          {isDirty && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              onClick={() => setPrefs(saved)}
+              disabled={isSaving}
+            >
+              Discard
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -40,14 +40,16 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/dashboard")
   ) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
-  // Redirect logged-in users away from login page
-  if (user && request.nextUrl.pathname === "/login") {
+  // Signed-in users skip the sign-in homepage
+  if (user && request.nextUrl.pathname === "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

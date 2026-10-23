@@ -4,23 +4,18 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Plus, X } from "lucide-react";
-import { toast } from "sonner";
 import type {
   InfrastructurePoint,
   Parcel,
   InfrastructureType,
 } from "@/lib/types/infrastructure";
 import { getParcelsByViewport } from "@/lib/actions/map";
-import { deleteInfrastructurePoint } from "@/lib/actions/infrastructure";
 import { InfrastructureLayer } from "./infrastructure-layer";
 import { ParcelsLayer } from "./parcels-layer";
-import { InfrastructurePopup } from "./infrastructure-popup";
 import { ParcelPopup } from "./parcel-popup";
 import { LayerControls, type LayerVisibility } from "./layer-controls";
-import { Legend } from "./legend";
-import { InfrastructureForm } from "./infrastructure-form";
-import { DeleteConfirmDialog } from "./delete-confirm-dialog";
 import { Button } from "@/components/ui/button";
+import type { LatLng } from "@/components/infrastructure/point-form";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
@@ -30,6 +25,10 @@ const DEFAULT_ZOOM = 16;
 
 // Debounce delay for viewport changes (ms)
 const VIEWPORT_DEBOUNCE_MS = 300;
+
+// Zoom when flying to a point picked outside the map (a link, the sheet's nearest list)
+const FOCUS_ZOOM = 18;
+const DRAFT_MARKER_COLOR = "#0891b2"; // --brand
 
 const defaultLayerVisibility: LayerVisibility = {
   infrastructure: true,
@@ -48,14 +47,29 @@ interface MapContainerProps {
   className?: string;
   infrastructurePoints?: InfrastructurePoint[];
   isAdmin?: boolean;
-  onRefresh?: () => void;
+  /** Ringed on the map; details live in the page's side sheet */
+  selectedId?: string | null;
+  onPointSelect?: (point: InfrastructurePoint) => void;
+  /** Add mode: the next map click calls this with the clicked location */
+  onAddPoint?: (location: LatLng) => void;
+  /** While a point form is open, map clicks set its location instead of selecting */
+  onPickLocation?: ((location: LatLng) => void) | null;
+  /** Marker for the location being edited or added */
+  draftLocation?: LatLng | null;
+  /** Fly here whenever this changes */
+  focus?: (LatLng & { key: string }) | null;
 }
 
 export function MapContainer({
   className,
   infrastructurePoints = [],
   isAdmin = false,
-  onRefresh,
+  selectedId = null,
+  onPointSelect,
+  onAddPoint,
+  onPickLocation = null,
+  draftLocation = null,
+  focus = null,
 }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -70,31 +84,14 @@ export function MapContainer({
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
 
-  // Popup state
-  const [selectedInfrastructure, setSelectedInfrastructure] =
-    useState<InfrastructurePoint | null>(null);
+  // Parcel popup state
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [parcelClickLngLat, setParcelClickLngLat] = useState<
     [number, number] | undefined
   >(undefined);
 
-  // Add mode state
   const [isAddMode, setIsAddMode] = useState(false);
-  const [formOpen, setFormOpen] = useState(false);
-  const [newPointCoordinates, setNewPointCoordinates] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
-  const [editingPoint, setEditingPoint] = useState<InfrastructurePoint | null>(
-    null
-  );
-
-  // Delete confirmation state
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [pointToDelete, setPointToDelete] = useState<InfrastructurePoint | null>(
-    null
-  );
-  const [isDeleting, setIsDeleting] = useState(false);
+  const isPicking = isAddMode || !!onPickLocation;
 
   // Debounce timer ref
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -111,6 +108,19 @@ export function MapContainer({
     layerVisibility.infrastructure,
     layerVisibility.infrastructureTypes,
   ]);
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<InfrastructureType, number> = {
+      shutoff_valve: 0,
+      hydrant: 0,
+      well: 0,
+      meter: 0,
+      reservoir: 0,
+      other: 0,
+    };
+    for (const point of infrastructurePoints) counts[point.type]++;
+    return counts;
+  }, [infrastructurePoints]);
 
   // Fetch parcels for current viewport
   const fetchParcelsForViewport = useCallback(async () => {
@@ -186,126 +196,113 @@ export function MapContainer({
     };
   }, [fetchParcelsForViewport, handleViewportChange]);
 
-  // Handle add mode cursor and click
+  // Add mode and location picking take over map clicks
   useEffect(() => {
-    if (!mapInstance) return;
+    if (!mapInstance || !isPicking) return;
 
-    const handleAddModeClick = (e: mapboxgl.MapMouseEvent) => {
+    const handlePickClick = (e: mapboxgl.MapMouseEvent) => {
+      // ~10 cm, matching "Use my location"
+      const location = { lat: Number(e.lngLat.lat.toFixed(6)), lng: Number(e.lngLat.lng.toFixed(6)) };
       if (isAddMode) {
-        setNewPointCoordinates({
-          lat: e.lngLat.lat,
-          lng: e.lngLat.lng,
-        });
-        setFormOpen(true);
         setIsAddMode(false);
+        onAddPoint?.(location);
+      } else {
+        onPickLocation?.(location);
       }
     };
 
     const canvas = mapInstance.getCanvas();
-    if (isAddMode) {
-      if (canvas) canvas.style.cursor = "crosshair";
-      mapInstance.on("click", handleAddModeClick);
-    } else {
-      if (canvas) canvas.style.cursor = "";
-    }
+    canvas.style.cursor = "crosshair";
+    mapInstance.on("click", handlePickClick);
 
     return () => {
-      mapInstance.off("click", handleAddModeClick);
-      const canvas = mapInstance.getCanvas();
-      if (canvas && !isAddMode) {
-        canvas.style.cursor = "";
-      }
+      mapInstance.off("click", handlePickClick);
+      canvas.style.cursor = "";
     };
-  }, [mapInstance, isAddMode]);
+  }, [mapInstance, isPicking, isAddMode, onAddPoint, onPickLocation]);
+
+  // Esc leaves add mode
+  useEffect(() => {
+    if (!isAddMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsAddMode(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isAddMode]);
+
+  // Draft marker for the location being added or edited
+  const draftMarker = useRef<mapboxgl.Marker | null>(null);
+  useEffect(() => {
+    if (!mapInstance) return;
+    if (!draftLocation) {
+      draftMarker.current?.remove();
+      draftMarker.current = null;
+      return;
+    }
+    if (!draftMarker.current) {
+      draftMarker.current = new mapboxgl.Marker({ color: DRAFT_MARKER_COLOR, scale: 0.8 });
+    }
+    draftMarker.current.setLngLat([draftLocation.lng, draftLocation.lat]).addTo(mapInstance);
+  }, [mapInstance, draftLocation]);
+  useEffect(
+    () => () => {
+      draftMarker.current?.remove();
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!mapInstance || !focus) return;
+    mapInstance.flyTo({
+      center: [focus.lng, focus.lat],
+      zoom: Math.max(mapInstance.getZoom(), FOCUS_ZOOM),
+      duration: 800,
+    });
+    // Only re-fly when the focus target changes, not when its object identity does
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapInstance, focus?.key]);
+
+  // The page's side sheet changes the map's width; Mapbox only notices window resizes
+  useEffect(() => {
+    if (!mapInstance || !mapContainer.current) return;
+    const observer = new ResizeObserver(() => mapInstance.resize());
+    observer.observe(mapContainer.current);
+    return () => observer.disconnect();
+  }, [mapInstance]);
 
   const handleInfrastructureClick = useCallback(
     (point: InfrastructurePoint) => {
-      if (isAddMode) return; // Ignore clicks on points in add mode
+      if (isPicking) return; // Clicks set a location while adding or editing
       setSelectedParcel(null);
-      setSelectedInfrastructure(point);
+      onPointSelect?.(point);
     },
-    [isAddMode]
+    [isPicking, onPointSelect]
   );
 
   const handleParcelClick = useCallback(
     (parcel: Parcel) => {
-      if (isAddMode) return; // Ignore clicks on parcels in add mode
-      setSelectedInfrastructure(null);
+      if (isPicking) return;
       setSelectedParcel(parcel);
     },
-    [isAddMode]
+    [isPicking]
   );
-
-  const handleCloseInfrastructurePopup = useCallback(() => {
-    setSelectedInfrastructure(null);
-  }, []);
 
   const handleCloseParcelPopup = useCallback(() => {
     setSelectedParcel(null);
   }, []);
 
-  const handleFormSuccess = useCallback(() => {
-    setFormOpen(false);
-    setNewPointCoordinates(null);
-    setEditingPoint(null);
-    onRefresh?.();
-  }, [onRefresh]);
-
-  const handleFormClose = useCallback((open: boolean) => {
-    setFormOpen(open);
-    if (!open) {
-      setNewPointCoordinates(null);
-      setEditingPoint(null);
-    }
-  }, []);
-
-  // Handle editing an infrastructure point
-  const handleEditPoint = useCallback((point: InfrastructurePoint) => {
-    setSelectedInfrastructure(null);
-    setEditingPoint(point);
-    setFormOpen(true);
-  }, []);
-
-  // Handle delete confirmation
-  const handleDeletePoint = useCallback((point: InfrastructurePoint) => {
-    setPointToDelete(point);
-    setDeleteDialogOpen(true);
-  }, []);
-
-  // Confirm and execute delete
-  const handleConfirmDelete = useCallback(async () => {
-    if (!pointToDelete) return;
-
-    setIsDeleting(true);
-    try {
-      const result = await deleteInfrastructurePoint(pointToDelete.id);
-      if (result.error) {
-        toast.error(result.error);
-      } else {
-        toast.success("Infrastructure point deleted successfully");
-        setSelectedInfrastructure(null);
-        onRefresh?.();
-      }
-    } catch {
-      toast.error("Failed to delete infrastructure point");
-    } finally {
-      setIsDeleting(false);
-      setDeleteDialogOpen(false);
-      setPointToDelete(null);
-    }
-  }, [pointToDelete, onRefresh]);
-
   return (
     <div className={className}>
-      <div ref={mapContainer} className="h-full w-full rounded-lg" />
+      <div ref={mapContainer} className="h-full w-full" />
       {!mapLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-slate-100">
-          <div className="text-sm text-slate-500">Loading map...</div>
+        <div className="absolute inset-0 flex items-center justify-center bg-zinc-100">
+          <div className="font-mono text-[11px] text-muted-foreground">LOADING MAP…</div>
         </div>
       )}
       {parcelsLoading && (
-        <div className="absolute right-16 top-4 z-10 rounded bg-white px-2 py-1 text-xs text-slate-500 shadow">
-          Loading parcels...
+        <div className="absolute top-4 right-16 z-10 rounded-md bg-background/90 px-2 py-1 font-mono text-[10px] text-muted-foreground shadow-sm">
+          LOADING PARCELS…
         </div>
       )}
       {mapLoaded && mapInstance && (
@@ -320,78 +317,55 @@ export function MapContainer({
             map={mapInstance}
             points={visibleInfrastructurePoints}
             visible={layerVisibility.infrastructure}
+            selectedId={selectedId}
             onPointClick={handleInfrastructureClick}
-          />
-          <InfrastructurePopup
-            map={mapInstance}
-            point={selectedInfrastructure}
-            isAdmin={isAdmin}
-            onClose={handleCloseInfrastructurePopup}
-            onEdit={handleEditPoint}
-            onDelete={handleDeletePoint}
           />
           <ParcelPopup
             map={mapInstance}
             parcel={selectedParcel}
             lngLat={parcelClickLngLat}
+            points={infrastructurePoints}
+            onPointSelect={(point) => {
+              setSelectedParcel(null);
+              onPointSelect?.(point);
+            }}
             onClose={handleCloseParcelPopup}
           />
           <LayerControls
             visibility={layerVisibility}
             onVisibilityChange={setLayerVisibility}
+            typeCounts={typeCounts}
+            parcelCount={parcels.length}
           />
-          <Legend />
         </>
       )}
 
-      {/* Add Point Button - Admin only */}
-      {mapLoaded && isAdmin && (
-        <div className="absolute bottom-4 right-4 z-10">
+      {/* Add point: admin only, and not while a point form already has the map */}
+      {mapLoaded && isAdmin && onAddPoint && !onPickLocation && (
+        <div className="absolute right-4 bottom-8 z-10">
           {isAddMode ? (
             <div className="flex items-center gap-2">
-              <div className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow">
-                Click on map to place point
+              <div className="rounded-md bg-zinc-900/90 px-2.5 py-1.5 font-mono text-[11px] text-white shadow-sm">
+                CLICK THE MAP TO PLACE THE POINT
               </div>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setIsAddMode(false)}
-                className="bg-white"
+                className="h-7 bg-background px-2.5 text-xs"
               >
-                <X className="mr-1 h-4 w-4" />
+                <X className="size-3.5" />
                 Cancel
               </Button>
             </div>
           ) : (
-            <Button
-              onClick={() => setIsAddMode(true)}
-              className="shadow-lg"
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              Add Point
+            <Button size="sm" className="h-7 px-2.5 text-xs shadow-md" onClick={() => setIsAddMode(true)}>
+              <Plus className="size-3.5" />
+              Point
             </Button>
           )}
         </div>
       )}
-
-      {/* Infrastructure Form Modal */}
-      <InfrastructureForm
-        open={formOpen}
-        onOpenChange={handleFormClose}
-        point={editingPoint}
-        initialCoordinates={newPointCoordinates || undefined}
-        onSuccess={handleFormSuccess}
-      />
-
-      {/* Delete Confirmation Dialog */}
-      <DeleteConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title="Delete Infrastructure Point"
-        description={`Are you sure you want to delete "${pointToDelete?.name}"? This action cannot be undone.`}
-        onConfirm={handleConfirmDelete}
-        isDeleting={isDeleting}
-      />
     </div>
   );
 }

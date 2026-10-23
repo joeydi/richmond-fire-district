@@ -3,6 +3,7 @@ import {
   getNotificationPreferences,
   getDefaultPreferences,
 } from "@/lib/actions/notifications";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { NotificationsForm } from "./notifications-form";
 
 export default async function NotificationsPage() {
@@ -13,11 +14,14 @@ export default async function NotificationsPage() {
     return null;
   }
 
-  const preferences = await getNotificationPreferences();
-  const defaultPrefs = await getDefaultPreferences(user.id);
+  const [preferences, defaultPrefs] = await Promise.all([
+    getNotificationPreferences(),
+    getDefaultPreferences(user.id),
+  ]);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div data-flush className="flex min-h-full flex-col">
+      <SettingsNav />
       <NotificationsForm
         preferences={preferences}
         defaultPreferences={defaultPrefs}

@@ -136,13 +136,15 @@ export function DownloadInfrastructurePdfButton({
 
   return (
     <Button
+      size="sm"
+      className="h-7 px-2.5 text-xs"
       onClick={handleDownload}
       disabled={isGenerating || data.totalPoints === 0}
     >
       {isGenerating ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <Loader2 className="size-3.5 animate-spin" />
       ) : (
-        <Download className="mr-2 h-4 w-4" />
+        <Download className="size-3.5" />
       )}
       {isGenerating ? "Generating…" : "Download PDF"}
     </Button>

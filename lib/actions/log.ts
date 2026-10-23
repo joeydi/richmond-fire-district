@@ -13,6 +13,7 @@ import type {
   LogPost,
   LogPostImage,
   LogPostWithImages,
+  LogPostIndex,
   GetLogPostsOptions,
 } from "@/lib/types/log";
 import { notifyNewLogPost } from "@/lib/services/notifications";
@@ -23,12 +24,12 @@ const STORAGE_BUCKET = "log-images";
 const createPostSchema = z.object({
   content: z.string().min(1, "Content is required").max(50000),
   author_id: z.string().uuid().optional(),
-  created_at: z.string().datetime().optional(),
+  created_at: z.string().datetime({ offset: true }).optional(),
 });
 
 const updatePostSchema = z.object({
   content: z.string().min(1, "Content is required").max(50000),
-  created_at: z.string().datetime().optional(),
+  created_at: z.string().datetime({ offset: true }).optional(),
   author_id: z.string().uuid().optional(),
 });
 
@@ -42,23 +43,23 @@ const updatePostSchema = z.object({
 export async function getLogPosts(
   options: GetLogPostsOptions = {}
 ): Promise<{ data: LogPostWithImages[]; count: number }> {
-  const { limit = 20, offset = 0, search } = options;
+  const { limit = 20, offset = 0, search, authorId, hasPhotos } = options;
 
   const supabase = await createClient();
 
-  let query = supabase
-    .from("log_posts")
-    .select(
-      `
-      *,
-      author:profiles!author_id(id, full_name, email)
-    `,
-      { count: "exact" }
-    );
+  // An inner join on images limits results to posts that have at least one.
+  // Typed as string since the query parser can't type a conditional select.
+  const columns: string = hasPhotos
+    ? "*, author:profiles!author_id(id, full_name, email), log_post_images!inner(id)"
+    : "*, author:profiles!author_id(id, full_name, email)";
+  let query = supabase.from("log_posts").select(columns, { count: "exact" });
 
   // Apply search filter (content only - Supabase doesn't support or() on related tables)
   if (search) {
     query = query.ilike("content", `%${search}%`);
+  }
+  if (authorId) {
+    query = query.eq("author_id", authorId);
   }
 
   // Order by created_at descending (newest first)
@@ -74,18 +75,117 @@ export async function getLogPosts(
     return { data: [], count: 0 };
   }
 
-  // Fetch images for each post
-  const postsWithImages = await Promise.all(
-    (data ?? []).map(async (post) => {
-      const images = await getLogPostImages(post.id);
-      return {
+  const posts = (data ?? []) as unknown as LogPost[];
+  const imagesByPost = await getImagesForPosts(posts.map((post) => post.id));
+  const postsWithImages = posts.map(
+    (post) =>
+      ({
         ...post,
-        images,
-      } as LogPostWithImages;
-    })
+        images: imagesByPost.get(post.id) ?? [],
+      }) as LogPostWithImages
   );
 
   return { data: postsWithImages, count: count ?? 0 };
+}
+
+/**
+ * Fetch images for many posts with one query and one signed-URL request,
+ * grouped by post id (newest first within each post)
+ */
+async function getImagesForPosts(
+  postIds: string[]
+): Promise<Map<string, LogPostImage[]>> {
+  const byPost = new Map<string, LogPostImage[]>();
+  if (postIds.length === 0) return byPost;
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("log_post_images")
+    .select("*")
+    .in("log_post_id", postIds)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching log post images:", error);
+    return byPost;
+  }
+
+  const images = (data ?? []) as LogPostImage[];
+  if (images.length === 0) return byPost;
+
+  const { data: signed, error: signError } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrls(
+      images.map((image) => image.storage_path),
+      3600 // 1 hour expiry
+    );
+  if (signError) {
+    console.error("Error signing log post image URLs:", signError);
+  }
+  const urlByPath = new Map(
+    (signed ?? []).map((s) => [s.path, s.signedUrl] as const)
+  );
+
+  for (const image of images) {
+    const list = byPost.get(image.log_post_id) ?? [];
+    list.push({ ...image, url: urlByPath.get(image.storage_path) ?? undefined });
+    byPost.set(image.log_post_id, list);
+  }
+  return byPost;
+}
+
+/**
+ * Lightweight index of log posts for the month navigator and author filter
+ */
+export async function getLogPostIndex(
+  options: Pick<GetLogPostsOptions, "search" | "authorId" | "hasPhotos"> = {}
+): Promise<LogPostIndex> {
+  const { search, authorId, hasPhotos } = options;
+
+  const supabase = await createClient();
+
+  const columns: string = hasPhotos ? "created_at, log_post_images!inner(id)" : "created_at";
+  let datesQuery = supabase
+    .from("log_posts")
+    .select(columns)
+    .order("created_at", { ascending: false });
+  if (search) {
+    datesQuery = datesQuery.ilike("content", `%${search}%`);
+  }
+  if (authorId) {
+    datesQuery = datesQuery.eq("author_id", authorId);
+  }
+
+  const [datesResult, authorsResult] = await Promise.all([
+    datesQuery,
+    supabase.from("log_posts").select("author:profiles!author_id(id, full_name, email)"),
+  ]);
+
+  if (datesResult.error) {
+    console.error("Error fetching log post index:", datesResult.error);
+  }
+  if (authorsResult.error) {
+    console.error("Error fetching log post authors:", authorsResult.error);
+  }
+
+  const authors = new Map<string, string>();
+  for (const row of (authorsResult.data ?? []) as unknown as {
+    author: { id: string; full_name: string | null; email: string } | null;
+  }[]) {
+    if (row.author && !authors.has(row.author.id)) {
+      authors.set(row.author.id, row.author.full_name || row.author.email);
+    }
+  }
+
+  return {
+    dates: ((datesResult.data ?? []) as unknown as { created_at: string }[]).map(
+      (row) => row.created_at
+    ),
+    authors: [...authors]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
 }
 
 /**
@@ -205,11 +305,11 @@ export async function createLogPost(input: {
 
 /**
  * Update an existing log post
- * Authors can update their own, admins can update any
+ * Authors can update their own, admins can update any and change the author
  */
 export async function updateLogPost(
   id: string,
-  input: { content: string; created_at?: string }
+  input: { content: string; created_at?: string; author_id?: string }
 ): Promise<{ success: boolean; error?: string }> {
   const profile = await requireEditor();
 
@@ -240,6 +340,7 @@ export async function updateLogPost(
     content: string;
     updated_at: string;
     created_at?: string;
+    author_id?: string;
   } = {
     content: parsed.data.content,
     updated_at: new Date().toISOString(),
@@ -247,6 +348,13 @@ export async function updateLogPost(
 
   if (parsed.data.created_at) {
     updateData.created_at = parsed.data.created_at;
+  }
+
+  if (parsed.data.author_id && parsed.data.author_id !== post.author_id) {
+    if (!userIsAdmin) {
+      return { success: false, error: "Only admins can change a post's author" };
+    }
+    updateData.author_id = parsed.data.author_id;
   }
 
   const { error } = await supabase

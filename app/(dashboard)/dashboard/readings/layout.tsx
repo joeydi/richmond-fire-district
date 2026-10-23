@@ -12,19 +12,21 @@ export default async function ReadingsLayout({
   const canEdit = await isEditorOrAdmin();
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4 justify-between">
+    <div data-flush className="flex min-h-full flex-col has-[[data-fill]]:h-full">
+      <div className="flex items-center gap-2 border-b px-4 py-2">
         <ReadingsNav />
+        <div className="hidden flex-1 sm:block" />
         {canEdit && (
-          <Button asChild variant="outline" className="hidden sm:flex">
+          <Button asChild variant="outline" size="sm" className="hidden h-7 px-2 font-mono text-[11px] sm:flex">
             <Link href="/dashboard/readings/import">
-              <Upload className="mr-2 h-4 w-4" />
-              Import CSV
+              <Upload className="size-3.5" />
+              IMPORT CSV
             </Link>
           </Button>
         )}
       </div>
-      {children}
+      {/* Entry and history views are full-bleed (data-bleed); import keeps page padding */}
+      <div className="flex min-h-0 flex-1 flex-col p-4 has-[[data-bleed]]:p-0 lg:p-6">{children}</div>
     </div>
   );
 }

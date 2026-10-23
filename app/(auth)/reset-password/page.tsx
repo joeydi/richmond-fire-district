@@ -3,16 +3,15 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { AuthShell } from "@/components/auth/auth-shell";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  AuthHeading,
+  AuthLabel,
+  AuthNotice,
+  authInputClass,
+  authPrimaryButtonClass,
+  EnterHint,
+} from "@/components/auth/auth-ui";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -67,9 +66,9 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      // Sign out and redirect to login
+      // Sign out and return to sign-in
       await supabase.auth.signOut();
-      router.push("/login?message=Password updated successfully");
+      router.push("/?notice=password_updated");
     } catch {
       setError("An unexpected error occurred");
     } finally {
@@ -79,64 +78,62 @@ export default function ResetPasswordPage() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Reset Password</CardTitle>
-            <CardDescription>Verifying your reset link...</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center text-sm text-slate-500">
-              Please wait while we verify your password reset link.
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <AuthShell>
+        <div className="flex flex-col gap-4">
+          <AuthHeading
+            eyebrow="PASSWORD RESET"
+            title="Verifying your link"
+            description="Please wait while we verify your password reset link."
+          />
+        </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Set New Password</CardTitle>
-          <CardDescription>Enter your new password below</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
-                {error}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="password">New Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Updating..." : "Update password"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+    <AuthShell>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <AuthHeading
+          eyebrow="PASSWORD RESET"
+          title="Set a new password"
+          description="Use at least 6 characters."
+        />
+
+        {error && <AuthNotice tone="error">{error}</AuthNotice>}
+
+        <div className="flex flex-col gap-1.5">
+          <AuthLabel htmlFor="password">NEW PASSWORD</AuthLabel>
+          <input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={loading}
+            autoFocus
+            className={authInputClass}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <AuthLabel htmlFor="confirmPassword">CONFIRM PASSWORD</AuthLabel>
+          <input
+            id="confirmPassword"
+            type="password"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            disabled={loading}
+            className={authInputClass}
+          />
+        </div>
+
+        <button type="submit" disabled={loading} className={authPrimaryButtonClass}>
+          {loading ? "Updating…" : "Update password"}
+          {!loading && <EnterHint />}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

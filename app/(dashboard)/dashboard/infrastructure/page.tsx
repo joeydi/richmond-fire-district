@@ -1,15 +1,24 @@
-import { getInfrastructurePoints } from "@/lib/actions/infrastructure";
+import {
+  getInfrastructurePointDetails,
+  getInfrastructurePoints,
+} from "@/lib/actions/infrastructure";
 import { isAdmin } from "@/lib/auth/roles";
 import { InfrastructureView } from "./infrastructure-view";
-import type { InfrastructurePoint } from "@/lib/types/infrastructure";
+import type {
+  InfrastructurePoint,
+  InfrastructureStatus,
+  InfrastructureType,
+} from "@/lib/types/infrastructure";
 
 interface InfrastructurePageProps {
   searchParams: Promise<{
     search?: string;
     type?: string;
+    status?: string;
     sortBy?: string;
     sortOrder?: string;
     page?: string;
+    point?: string;
   }>;
 }
 
@@ -19,36 +28,39 @@ export default async function InfrastructurePage({
   const params = await searchParams;
   const search = params.search || "";
   const typeFilter = params.type || "all";
+  const statusFilter = params.status || "all";
   const sortBy = (params.sortBy as keyof InfrastructurePoint) || "name";
   const sortOrder = (params.sortOrder as "asc" | "desc") || "asc";
   const page = parseInt(params.page || "1", 10);
   const pageSize = 20;
 
-  const [{ data: points, count }, userIsAdmin] = await Promise.all([
+  const [{ data: points, count }, userIsAdmin, details] = await Promise.all([
     getInfrastructurePoints({
       search,
-      type: typeFilter as any,
+      type: typeFilter as InfrastructureType | "all",
+      status: statusFilter as InfrastructureStatus | "all",
       sortBy,
       sortOrder,
       limit: pageSize,
       offset: (page - 1) * pageSize,
     }),
     isAdmin(),
+    params.point ? getInfrastructurePointDetails(params.point) : null,
   ]);
 
   return (
-    <div className="space-y-6">
-      <InfrastructureView
-        points={points}
-        totalCount={count}
-        currentPage={page}
-        pageSize={pageSize}
-        search={search}
-        typeFilter={typeFilter}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        isAdmin={userIsAdmin}
-      />
-    </div>
+    <InfrastructureView
+      points={points}
+      totalCount={count}
+      currentPage={page}
+      pageSize={pageSize}
+      search={search}
+      typeFilter={typeFilter}
+      statusFilter={statusFilter}
+      sortBy={sortBy}
+      sortOrder={sortOrder}
+      isAdmin={userIsAdmin}
+      details={details}
+    />
   );
 }

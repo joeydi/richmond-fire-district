@@ -1,41 +1,93 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Mail, Pencil } from "lucide-react";
-import { sendInviteEmail } from "@/lib/actions/users";
+import { Mail, Plus } from "lucide-react";
+import { sendInviteEmail, type UserActivity } from "@/lib/actions/users";
+import { getLogDateParts } from "@/components/log/log-dates";
 import { toast } from "sonner";
-import type { Profile } from "@/lib/types/database";
+import { cn } from "@/lib/utils";
+import type { Profile, UserRole } from "@/lib/types/database";
+import { formatAgo, NO_ACTIVITY, ROLES, roleDots, roleNotes } from "./user-roles";
 
 interface UsersTableProps {
   users: Profile[];
+  /** Users after the role filter */
+  visible: Profile[];
+  activity: Record<string, UserActivity>;
+  currentUserId: string;
+  /** Request time, so relative times match between server and client */
+  now: number;
+  roleFilter: UserRole | "all";
+  onRoleFilter: (role: UserRole | "all") => void;
+  selectedId: string | null;
+  onSelect: (user: Profile) => void;
+  onCreate: () => void;
 }
 
-const roleBadgeVariant = {
-  admin: "destructive",
-  editor: "default",
-  member: "secondary",
-} as const;
+const thClass =
+  "border-b bg-zinc-50 px-2 py-1.5 text-left font-mono text-[10px] font-medium tracking-[0.06em] whitespace-nowrap text-muted-foreground uppercase first:pl-4 last:pr-4";
+const tdClass = "px-2 py-[7px] first:pl-4 last:pr-4";
 
-export function UsersTable({ users }: UsersTableProps) {
+function RoleLabel({ role }: { role: UserRole }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap text-zinc-700 uppercase">
+      <span className={cn("size-1.5 rounded-full", roleDots[role])} />
+      {role}
+    </span>
+  );
+}
+
+function LastSignIn({ at, now }: { at: string | null; now: number }) {
+  if (!at) {
+    return <span className="font-mono text-[11px] text-amber-700">NEVER</span>;
+  }
+  const { date, time } = getLogDateParts(at);
+  return (
+    <span className="font-mono text-[11px] whitespace-nowrap text-zinc-700" title={`${date} ${time}`}>
+      {formatAgo(at, now)}
+    </span>
+  );
+}
+
+function Entries({ activity }: { activity: UserActivity }) {
+  const total = activity.readings30d + activity.posts30d;
+  if (total === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span
+      className="font-mono"
+      title={`${activity.readings30d} readings · ${activity.posts30d} log posts in the last 30 days`}
+    >
+      {activity.readings30d}
+      <span className="text-muted-foreground"> / </span>
+      {activity.posts30d}
+    </span>
+  );
+}
+
+export function UsersTable({
+  users,
+  visible,
+  activity,
+  currentUserId,
+  now,
+  roleFilter,
+  onRoleFilter,
+  selectedId,
+  onSelect,
+  onCreate,
+}: UsersTableProps) {
   const [sendingInvite, setSendingInvite] = useState<string | null>(null);
 
-  const handleSendInvite = async (userId: string) => {
-    setSendingInvite(userId);
+  const counts = Object.fromEntries(ROLES.map((role) => [role, users.filter((u) => u.role === role).length]));
+  const neverSignedIn = users.filter((user) => !activity[user.id]?.lastSignInAt).length;
+
+  const handleSendInvite = async (user: Profile) => {
+    setSendingInvite(user.id);
     try {
-      const result = await sendInviteEmail(userId);
+      const result = await sendInviteEmail(user.id);
       if (result.success) {
-        toast.success("Invite email sent successfully");
+        toast.success(`Sign-in link sent to ${user.email}`);
       } else {
         toast.error(result.error || "Failed to send invite");
       }
@@ -46,65 +98,203 @@ export function UsersTable({ users }: UsersTableProps) {
     }
   };
 
+  const actions = (user: Profile) => (
+    <div className="flex justify-end gap-0.5">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-6 text-muted-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleSendInvite(user);
+        }}
+        disabled={sendingInvite === user.id}
+        title="Send sign-in link"
+      >
+        <Mail className="size-3" />
+        <span className="sr-only">Send sign-in link to {user.email}</span>
+      </Button>
+    </div>
+  );
+
+  const name = (user: Profile) => (
+    <span className="inline-flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(user);
+        }}
+        className={cn(
+          "text-left underline-offset-2 outline-none hover:underline focus-visible:underline",
+          !user.full_name && "text-muted-foreground"
+        )}
+      >
+        {user.full_name || "No name"}
+      </button>
+      {user.id === currentUserId && (
+        <span className="rounded-sm bg-zinc-100 px-1 font-mono text-[9px] tracking-[0.06em] text-zinc-600">YOU</span>
+      )}
+    </span>
+  );
+
   return (
-    <div className="rounded-md border bg-white">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Joined</TableHead>
-            <TableHead className="w-[100px]">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {users.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={5} className="text-center text-slate-500">
-                No users found
-              </TableCell>
-            </TableRow>
-          ) : (
-            users.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell className="font-medium">
-                  {user.full_name || "—"}
-                </TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>
-                  <Badge variant={roleBadgeVariant[user.role]}>
-                    {user.role}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {new Date(user.created_at).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleSendInvite(user.id)}
-                      disabled={sendingInvite === user.id}
-                      title="Send invite email"
-                    >
-                      <Mail className="h-4 w-4" />
-                      <span className="sr-only">Send invite</span>
-                    </Button>
-                    <Button variant="ghost" size="icon" asChild>
-                      <Link href={`/dashboard/admin/users/${user.id}/edit`}>
-                        <Pencil className="h-4 w-4" />
-                        <span className="sr-only">Edit user</span>
-                      </Link>
-                    </Button>
+    <div data-flush className="flex min-h-full flex-col">
+      {/* Toolbar */}
+      <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2">
+        <div role="group" aria-label="Filter by role" className="flex gap-0.5 rounded-md bg-muted p-0.5 font-mono text-[11px]">
+          {(["all", ...ROLES] as const).map((role) => (
+            <button
+              key={role}
+              type="button"
+              aria-pressed={roleFilter === role}
+              onClick={() => onRoleFilter(role)}
+              className={cn(
+                "flex h-6 items-center gap-1 rounded-sm px-2 uppercase",
+                roleFilter === role
+                  ? "bg-background font-medium shadow-[0_0_0_1px_var(--border)]"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {role}
+              <span className="text-muted-foreground">{role === "all" ? users.length : counts[role]}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1" />
+        {neverSignedIn > 0 && (
+          <span className="hidden font-mono text-[11px] text-amber-700 sm:inline">
+            {neverSignedIn} NEVER SIGNED IN
+          </span>
+        )}
+        <Button size="sm" className="h-7 px-2.5 text-xs" onClick={onCreate}>
+          <Plus className="size-3.5" />
+          User
+        </Button>
+      </div>
+
+      {visible.length === 0 ? (
+        <p className="flex-1 px-4 py-16 text-center text-xs text-muted-foreground">No users with this role.</p>
+      ) : (
+        <>
+          {/* Phones: stacked list */}
+          <ul className="flex-1 sm:hidden">
+            {visible.map((user) => {
+              const userActivity = activity[user.id] ?? NO_ACTIVITY;
+              return (
+                <li
+                  key={user.id}
+                  data-user-id={user.id}
+                  className={cn(
+                    "flex items-start gap-3 border-b border-zinc-100 px-4 py-2.5",
+                    user.id === selectedId && "bg-brand/10"
+                  )}
+                >
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <div className="flex items-center gap-2 text-[13px] font-medium">
+                      {name(user)}
+                      <RoleLabel role={user.role} />
+                    </div>
+                    <span className="truncate font-mono text-xs text-zinc-600">{user.email}</span>
+                    <span className="flex gap-3 font-mono text-[11px] text-muted-foreground">
+                      <span>
+                        SIGN-IN <LastSignIn at={userActivity.lastSignInAt} now={now} />
+                      </span>
+                      <span>
+                        30D <Entries activity={userActivity} />
+                      </span>
+                    </span>
                   </div>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+                  {actions(user)}
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Larger screens: table */}
+          <div className="relative hidden flex-1 overflow-x-auto sm:block">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th className={thClass}>Name</th>
+                  <th className={thClass}>Email</th>
+                  <th className={thClass}>Role</th>
+                  <th className={thClass}>Last sign-in</th>
+                  <th className={cn(thClass, "text-right")} title="Readings / log posts entered in the last 30 days">
+                    Readings / posts · 30d
+                  </th>
+                  <th className={cn(thClass, "hidden md:table-cell")}>Last entry</th>
+                  <th className={cn(thClass, "hidden lg:table-cell")}>Joined</th>
+                  <th className={cn(thClass, "w-16")}>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((user) => {
+                  const userActivity = activity[user.id] ?? NO_ACTIVITY;
+                  return (
+                    <tr
+                      key={user.id}
+                      data-user-id={user.id}
+                      aria-selected={user.id === selectedId}
+                      onClick={() => onSelect(user)}
+                      className={cn(
+                        "group cursor-pointer border-b border-zinc-100 transition-colors",
+                        user.id === selectedId ? "bg-brand/10" : "hover:bg-zinc-50/70"
+                      )}
+                    >
+                      <td className={cn(tdClass, "font-medium whitespace-nowrap")}>{name(user)}</td>
+                      <td className={cn(tdClass, "max-w-[240px] truncate font-mono text-zinc-700")}>
+                        <a
+                          href={`mailto:${user.email}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="underline-offset-2 hover:text-foreground hover:underline">
+                          {user.email}
+                        </a>
+                      </td>
+                      <td className={tdClass} title={roleNotes[user.role]}>
+                        <RoleLabel role={user.role} />
+                      </td>
+                      <td className={tdClass}>
+                        <LastSignIn at={userActivity.lastSignInAt} now={now} />
+                      </td>
+                      <td className={cn(tdClass, "text-right")}>
+                        <Entries activity={userActivity} />
+                      </td>
+                      <td className={cn(tdClass, "hidden font-mono text-[11px] text-zinc-700 md:table-cell")}>
+                        {userActivity.lastEntryAt ? (
+                          formatAgo(userActivity.lastEntryAt, now)
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className={cn(tdClass, "hidden font-mono text-[11px] text-zinc-700 lg:table-cell")}>
+                        {getLogDateParts(user.created_at).date}
+                      </td>
+                      <td className={cn(tdClass, "py-0")}>
+                        <div className="transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+                          {actions(user)}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <div className="flex h-8 items-center gap-4 border-t px-4 font-mono text-[10px] tracking-[0.06em] text-muted-foreground uppercase">
+        {ROLES.map((role) => (
+          <span key={role} className="inline-flex items-center gap-1.5">
+            <span className={cn("size-1.5 rounded-full", roleDots[role])} />
+            {role} · {roleNotes[role]}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

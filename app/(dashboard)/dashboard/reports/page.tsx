@@ -21,11 +21,9 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   // If no meters exist, show empty state
   if (!meterId) {
     return (
-      <div className="space-y-6">
-        <div className="rounded-lg border bg-white p-8 text-center text-slate-500">
-          No meters configured. Add a meter to start generating reports.
-        </div>
-      </div>
+      <p className="py-16 text-center text-xs text-muted-foreground">
+        No meters configured. Add a meter to start generating reports.
+      </p>
     );
   }
 
@@ -38,13 +36,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   ]);
 
   return (
-    <div className="space-y-6">
-      <ReportsView
-        data={reportData}
-        month={month}
-        meterId={meterId}
-        canEdit={userCanEdit}
-      />
-    </div>
+    <ReportsView
+      data={reportData}
+      month={month}
+      meterId={meterId}
+      canEdit={userCanEdit}
+    />
   );
 }

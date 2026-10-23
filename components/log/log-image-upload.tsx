@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
-import { Upload, Loader2, AlertCircle } from "lucide-react";
+import { ImagePlus, Loader2, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { uploadLogPostImage } from "@/lib/actions/log";
 import { getErrorMessage, processImageForUpload } from "@/lib/image-processing";
@@ -61,7 +62,7 @@ export function LogImageUpload({
           fail(result.error);
         } else {
           setLastFile(null);
-          toast.success("Image uploaded successfully");
+          toast.success("Photo added");
           onUploadComplete?.();
         }
       } catch (err) {
@@ -80,11 +81,11 @@ export function LogImageUpload({
     }
   }, [lastFile, handleUpload]);
 
-  const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        handleUpload(file);
+  /** Uploads one at a time so each gets its own progress and error */
+  const handleFiles = useCallback(
+    async (files: File[]) => {
+      for (const file of files) {
+        await handleUpload(file);
       }
     },
     [handleUpload]
@@ -100,93 +101,73 @@ export function LogImageUpload({
     }
   }, []);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragActive(false);
-
-      const file = e.dataTransfer.files?.[0];
-      if (file) {
-        handleUpload(file);
-      }
-    },
-    [handleUpload]
-  );
-
   const isBusy = isProcessing || isUploading;
 
   return (
-    <div
-      className={`relative border-2 border-dashed rounded-lg p-4 transition-colors ${
-        dragActive
-          ? "border-blue-500 bg-blue-50"
-          : "border-slate-300 hover:border-slate-400"
-      } ${disabled || isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
-      onDragEnter={handleDrag}
-      onDragLeave={handleDrag}
-      onDragOver={handleDrag}
-      onDrop={handleDrop}
-    >
+    <div className="flex flex-col gap-1.5">
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
-        onChange={handleFileSelect}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          handleFiles(files);
+        }}
         disabled={disabled || isBusy}
         className="hidden"
       />
-
-      <div className="flex flex-col items-center justify-center gap-2 text-center">
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={disabled || isBusy}
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={(e) => {
+          handleDrag(e);
+          setDragActive(false);
+          handleFiles(Array.from(e.dataTransfer.files));
+        }}
+        className={cn(
+          "flex h-16 flex-col items-center justify-center gap-1 rounded-md border border-dashed text-xs text-muted-foreground transition-colors hover:border-zinc-400 hover:text-foreground disabled:cursor-not-allowed",
+          dragActive && "border-brand bg-brand/5 text-foreground"
+        )}
+      >
         {isBusy ? (
           <>
-            <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-            <p className="text-sm text-slate-600">
-              {isProcessing ? "Preparing image..." : "Uploading..."}
-            </p>
+            <Loader2 className="size-4 animate-spin" />
+            <span className="font-mono text-[10px] tracking-[0.04em]">
+              {isProcessing ? "PREPARING…" : "UPLOADING…"}
+            </span>
           </>
         ) : (
           <>
-            <Upload className="h-8 w-8 text-slate-400" />
-            <p className="text-sm text-slate-600">
-              Drag and drop an image, or{" "}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={disabled}
-                className="text-blue-600 hover:text-blue-700 font-medium"
-              >
-                browse
-              </button>
-            </p>
-            <p className="text-xs text-slate-400">
-              JPEG, PNG, WebP, or HEIC — large photos are resized automatically
-            </p>
+            <ImagePlus className="size-4" strokeWidth={1.75} />
+            Add photos
           </>
         )}
+      </button>
 
-        {error && !isBusy && (
-          <div
-            role="alert"
-            className="mt-2 flex w-full items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-left"
-          >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-            <div className="flex-1 space-y-1">
-              <p className="text-xs text-red-700">{error}</p>
-              {lastFile && (
-                <button
-                  type="button"
-                  onClick={handleRetry}
-                  disabled={disabled}
-                  className="text-xs font-medium text-red-700 underline hover:text-red-800"
-                >
-                  Try again
-                </button>
-              )}
-            </div>
+      {error && !isBusy && (
+        <div role="alert" className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-2 py-1.5">
+          <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-red-600" />
+          <div className="flex flex-1 flex-col gap-0.5">
+            <p className="text-xs text-red-700">{error}</p>
+            {lastFile && (
+              <button
+                type="button"
+                onClick={handleRetry}
+                disabled={disabled}
+                className="self-start text-xs font-medium text-red-700 underline hover:text-red-800"
+              >
+                Try again
+              </button>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

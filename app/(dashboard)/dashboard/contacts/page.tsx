@@ -1,8 +1,11 @@
-import Link from "next/link";
-import { getContacts, type Contact, type ContactType } from "@/lib/actions/contacts";
+import {
+  getContactDetails,
+  getContacts,
+  type Contact,
+  type ContactType,
+} from "@/lib/actions/contacts";
 import { canEdit } from "@/lib/auth/roles";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { NEW_CONTACT } from "@/components/contacts/contact-types";
 import { ContactsView } from "./contacts-view";
 
 interface ContactsPageProps {
@@ -12,6 +15,7 @@ interface ContactsPageProps {
     sortBy?: string;
     sortOrder?: string;
     page?: string;
+    contact?: string;
   }>;
 }
 
@@ -23,8 +27,9 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
   const sortOrder = (params.sortOrder as "asc" | "desc") || "asc";
   const page = parseInt(params.page || "1", 10);
   const pageSize = 100;
+  const creating = params.contact === NEW_CONTACT;
 
-  const [{ data: contacts, count }, userCanEdit] = await Promise.all([
+  const [{ data: contacts, count }, userCanEdit, details] = await Promise.all([
     getContacts({
       search,
       type: typeFilter as ContactType | "all",
@@ -34,31 +39,22 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
       offset: (page - 1) * pageSize,
     }),
     canEdit(),
+    params.contact && !creating ? getContactDetails(params.contact) : null,
   ]);
 
   return (
-    <div className="space-y-6">
-      {userCanEdit && (
-        <div className="flex justify-end">
-          <Link href="/dashboard/contacts/new">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Contact
-            </Button>
-          </Link>
-        </div>
-      )}
-      <ContactsView
-        contacts={contacts}
-        totalCount={count}
-        currentPage={page}
-        pageSize={pageSize}
-        search={search}
-        typeFilter={typeFilter}
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        canEdit={userCanEdit}
-      />
-    </div>
+    <ContactsView
+      contacts={contacts}
+      totalCount={count}
+      currentPage={page}
+      pageSize={pageSize}
+      search={search}
+      typeFilter={typeFilter}
+      sortBy={sortBy}
+      sortOrder={sortOrder}
+      canEdit={userCanEdit}
+      details={details}
+      creating={creating && userCanEdit}
+    />
   );
 }

@@ -1,12 +1,25 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Search, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Search, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { LogPost } from "./log-post";
-import type { LogPostWithImages } from "@/lib/types/log";
+import { LogPostForm } from "./log-post-form";
+import { getLogDateParts } from "./log-dates";
+import { NEW_POST, type LogPostIndex, type LogPostWithImages } from "@/lib/types/log";
+import type { Profile } from "@/lib/types/database";
+
+const ALL_AUTHORS = "all";
+const MAX_TICKS = 12;
 
 interface LogPostsListProps {
   posts: LogPostWithImages[];
@@ -14,8 +27,49 @@ interface LogPostsListProps {
   currentPage: number;
   pageSize: number;
   search: string;
+  authorId: string;
+  hasPhotos: boolean;
+  index: LogPostIndex;
   currentUserId: string;
   isAdmin: boolean;
+  canCreate: boolean;
+  /** For the composer's author picker; admins only */
+  users?: Profile[];
+  currentUserName: string;
+  /** The post named by `?compose=`, fetched in case it isn't on this page */
+  composePost: LogPostWithImages | null;
+}
+
+interface MonthGroup {
+  key: string;
+  label: string;
+  posts: LogPostWithImages[];
+}
+
+interface IndexMonth {
+  key: string;
+  label: string;
+  count: number;
+  page: number;
+}
+
+/** The current URL with `?compose=` set to `value`, or removed */
+function composeUrl(value: string | null): string {
+  const url = new URL(window.location.href);
+  if (value) url.searchParams.set("compose", value);
+  else url.searchParams.delete("compose");
+  return url.pathname + url.search + url.hash;
+}
+
+/** Opening needs nothing from the server, so replaceState skips the round trip */
+function setComposeParam(value: string | null) {
+  // null state: Next only syncs useSearchParams for calls without its own history state
+  window.history.replaceState(null, "", composeUrl(value));
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
 export function LogPostsList({
@@ -24,17 +78,176 @@ export function LogPostsList({
   currentPage,
   pageSize,
   search: initialSearch,
+  authorId,
+  hasPhotos,
+  index,
   currentUserId,
   isAdmin,
+  canCreate,
+  users,
+  currentUserName,
+  composePost,
 }: LogPostsListProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(initialSearch);
+  const [activeMonth, setActiveMonth] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  // Writing and editing happen in a side sheet beside the feed. `?compose=` is the source
+  // of truth, so links, redirects and the jump dialog open it as well as the buttons here.
+  const compose = useSearchParams().get("compose");
+  // Hides the sheet right away while a close that refetches the feed is in flight
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const [prevCompose, setPrevCompose] = useState(compose);
+  if (compose !== prevCompose) {
+    setPrevCompose(compose);
+    setDismissed(null);
+  }
+  // Scrolled to and flashed once it shows up in the refreshed feed
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const editingPost =
+    compose && compose !== NEW_POST
+      ? (posts.find((p) => p.id === compose) ?? (composePost?.id === compose ? composePost : undefined))
+      : undefined;
+  const canEditPost = (post: LogPostWithImages) => isAdmin || post.author_id === currentUserId;
+  const sheetOpen =
+    compose !== dismissed &&
+    ((compose === NEW_POST && canCreate) || (!!editingPost && canEditPost(editingPost)));
+
+  // Changes that need fresh posts go through the router: a refresh after replaceState
+  // would refetch the old URL and put ?compose= back
+  const replaceAndRefetch = (value: string | null) => {
+    startTransition(() => {
+      router.replace(composeUrl(value), { scroll: false });
+    });
+  };
+
+  const openCompose = (value: string) => {
+    setDismissed(null);
+    setComposeParam(value);
+  };
+
+  const closeCompose = () => {
+    if (compose === NEW_POST) {
+      setComposeParam(null);
+      return;
+    }
+    // Photos on an edited post save as they upload, so the feed may be stale
+    setDismissed(compose);
+    replaceAndRefetch(null);
+  };
+
+  const handleSaved = (id: string, options?: { retryPhotos?: boolean }) => {
+    setSavedId(id);
+    if (options?.retryPhotos) {
+      // The new post reopens for editing once the refetched feed has it
+      replaceAndRefetch(id);
+    } else {
+      setDismissed(compose);
+      replaceAndRefetch(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!savedId) return;
+    const el = document.getElementById(savedId);
+    if (!el) return;
+    el.scrollIntoView({ block: "nearest" });
+    const timer = setTimeout(() => setSavedId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [savedId, posts]);
 
   const totalPages = Math.ceil(totalCount / pageSize);
+  const hasFilters = Boolean(initialSearch || authorId || hasPhotos);
 
-  const updateUrl = (params: Record<string, string | number>) => {
+  const groups = useMemo<MonthGroup[]>(() => {
+    const result: MonthGroup[] = [];
+    for (const post of posts) {
+      const { monthKey, monthLabel } = getLogDateParts(post.created_at);
+      const last = result[result.length - 1];
+      if (last?.key === monthKey) {
+        last.posts.push(post);
+      } else {
+        result.push({ key: monthKey, label: monthLabel, posts: [post] });
+      }
+    }
+    return result;
+  }, [posts]);
+
+  // Month navigator built from every matching post, not just this page
+  const years = useMemo(() => {
+    const byYear: { year: string; months: IndexMonth[] }[] = [];
+    index.dates.forEach((iso, i) => {
+      const { monthKey, shortMonth, year } = getLogDateParts(iso);
+      let yearEntry = byYear[byYear.length - 1];
+      if (yearEntry?.year !== year) {
+        yearEntry = { year, months: [] };
+        byYear.push(yearEntry);
+      }
+      const month = yearEntry.months[yearEntry.months.length - 1];
+      if (month?.key === monthKey) {
+        month.count++;
+      } else {
+        yearEntry.months.push({
+          key: monthKey,
+          label: shortMonth,
+          count: 1,
+          page: Math.floor(i / pageSize) + 1,
+        });
+      }
+    });
+    return byYear;
+  }, [index.dates, pageSize]);
+
+  // "/" focuses search, "c" starts a new post
+  useEffect(() => {
+    // "g c" is the go-to-Contacts shortcut, so a "c" right after "g" isn't ours
+    let lastG = 0;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      } else if (e.key === "c" && canCreate && !sheetOpen && Date.now() - lastG > 1000) {
+        e.preventDefault();
+        openCompose(NEW_POST);
+      }
+      lastG = e.key === "g" ? Date.now() : 0;
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [canCreate, sheetOpen]);
+
+  // Highlight the month currently at the top of the feed
+  useEffect(() => {
+    const sections = document.querySelectorAll<HTMLElement>("[data-month]");
+    if (sections.length === 0) return;
+    const visible = new Map<string, number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const key = (entry.target as HTMLElement).dataset.month!;
+          if (entry.isIntersecting) {
+            visible.set(key, entry.boundingClientRect.top);
+          } else {
+            visible.delete(key);
+          }
+        }
+        const topmost = [...visible].sort((a, b) => a[1] - b[1])[0];
+        if (topmost) setActiveMonth(topmost[0]);
+      },
+      { root: feedRef.current, rootMargin: "-45px 0px -50% 0px" }
+    );
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [groups]);
+
+  const buildUrl = (params: Record<string, string | number>) => {
     const url = new URL(window.location.href);
+    url.hash = "";
+    url.searchParams.delete("compose");
     Object.entries(params).forEach(([key, value]) => {
       if (value) {
         url.searchParams.set(key, String(value));
@@ -42,8 +255,12 @@ export function LogPostsList({
         url.searchParams.delete(key);
       }
     });
+    return url.pathname + url.search;
+  };
+
+  const updateUrl = (params: Record<string, string | number>) => {
     startTransition(() => {
-      router.push(url.pathname + url.search);
+      router.push(buildUrl(params));
     });
   };
 
@@ -52,84 +269,257 @@ export function LogPostsList({
     updateUrl({ search, page: 1 });
   };
 
-  const handlePageChange = (page: number) => {
-    updateUrl({ page });
+  const clearFilters = () => {
+    setSearch("");
+    updateUrl({ search: "", author: "", photos: "", page: 1 });
   };
 
   const handlePostDeleted = () => {
     router.refresh();
   };
 
+  const monthHref = (month: IndexMonth) =>
+    month.page === currentPage
+      ? `#m-${month.key}`
+      : `${buildUrl({ page: month.page })}#m-${month.key}`;
+
   return (
-    <div className="space-y-6">
-      {/* Search */}
-      <form onSubmit={handleSearch} className="flex max-w-md gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            type="text"
-            placeholder="Search posts..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Button type="submit" variant="outline" disabled={isPending}>
-          Search
-        </Button>
-      </form>
+    <div data-flush className="flex h-full">
+      <div ref={feedRef} className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        {/* Toolbar */}
+        <div className="z-20 flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2 lg:sticky lg:top-0">
+          <form onSubmit={handleSearch} className="flex w-full sm:w-72">
+            <label className="flex h-7 flex-1 items-center gap-2 rounded-md border px-2 focus-within:border-ring">
+              <Search className="size-3.5 text-muted-foreground" />
+              <span className="sr-only">Search posts</span>
+              <input
+                ref={searchRef}
+                type="search"
+                placeholder="Search posts"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              />
+              <kbd className="hidden sm:inline-flex">/</kbd>
+            </label>
+          </form>
 
-      {/* Posts list */}
-      {posts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-          <FileText className="h-12 w-12 mb-4" />
-          <p className="text-lg font-medium text-slate-600">
-            {initialSearch ? "No posts found matching your search." : "No posts yet."}
-          </p>
-          {!initialSearch && <p className="text-sm mt-1">Create your first post to get started.</p>}
-        </div>
-      ) : (
-        <div className="space-y-4 xl:space-y-8">
-          {posts.map((post) => (
-            <LogPost
-              key={post.id}
-              post={post}
-              canEdit={isAdmin || post.author_id === currentUserId}
-              canDelete={isAdmin}
-              onDeleted={handlePostDeleted}
-            />
-          ))}
-        </div>
-      )}
+          <Select
+            value={authorId || ALL_AUTHORS}
+            onValueChange={(value) =>
+              updateUrl({ author: value === ALL_AUTHORS ? "" : value, page: 1 })
+            }
+          >
+            <SelectTrigger size="sm" className="!h-7 px-2 text-xs" aria-label="Author">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_AUTHORS}>All authors</SelectItem>
+              {index.authors.map((author) => (
+                <SelectItem key={author.id} value={author.id}>
+                  {author.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-4 border-t">
-          <p className="text-sm text-slate-600">
-            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount}{" "}
-            posts
-          </p>
-          <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-pressed={hasPhotos}
+            onClick={() => updateUrl({ photos: hasPhotos ? "" : "1", page: 1 })}
+            className={cn(
+              "h-7 px-2 font-mono text-[11px] tracking-wide",
+              hasPhotos && "border-brand bg-brand/10 text-foreground hover:bg-brand/15"
+            )}
+          >
+            HAS PHOTOS
+          </Button>
+
+          {hasFilters && (
             <Button
-              variant="outline"
+              type="button"
+              variant="ghost"
               size="sm"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage <= 1 || isPending}
+              onClick={clearFilters}
+              className="h-7 px-2 text-xs text-muted-foreground"
             >
-              <ChevronLeft className="h-4 w-4" />
-              Previous
+              <X className="size-3.5" />
+              Clear
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage >= totalPages || isPending}
+          )}
+
+          <div className="flex-1" />
+
+          <span
+            className={cn(
+              "font-mono text-[11px] text-muted-foreground transition-opacity",
+              isPending && "opacity-50"
+            )}
+          >
+            {totalCount} {totalCount === 1 ? "POST" : "POSTS"}
+          </span>
+
+          {canCreate && (
+            <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => openCompose(NEW_POST)}>
+              <Plus className="size-3.5" />
+              New post <kbd className="ml-0.5 hidden border-white/30 text-white/70 sm:inline-flex">C</kbd>
+            </Button>
+          )}
+        </div>
+
+        <div className="flex flex-1">
+          {/* Month navigator */}
+          {years.length > 0 && (
+            <nav
+              aria-label="Jump to month"
+              className="sticky top-[45px] hidden h-[calc(100dvh-89px)] w-40 shrink-0 self-start overflow-y-auto border-r px-2 py-3 lg:block"
             >
-              Next
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+              <div className="flex flex-col gap-2.5">
+                {years.map((y) => (
+                  <div key={y.year} className="flex flex-col gap-px">
+                    <span className="px-2 pb-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
+                      {y.year}
+                    </span>
+                    {y.months.map((month) => {
+                      const isActive = month.key === activeMonth;
+                      return (
+                        <a
+                          key={month.key}
+                          href={monthHref(month)}
+                          aria-current={isActive ? "true" : undefined}
+                          className={cn(
+                            "flex h-6 items-center gap-2 rounded-md px-2 font-mono text-[11px] uppercase transition-colors",
+                            isActive
+                              ? "bg-accent text-foreground"
+                              : "text-zinc-700 hover:bg-accent/60"
+                          )}
+                        >
+                          <span className="w-7">{month.label}</span>
+                          <span className="flex flex-1 gap-0.5" aria-hidden="true">
+                            {Array.from({ length: Math.min(month.count, MAX_TICKS) }, (_, i) => (
+                              <span
+                                key={i}
+                                className={cn(
+                                  "h-2.5 w-[3px]",
+                                  isActive ? "bg-brand" : "bg-zinc-300"
+                                )}
+                              />
+                            ))}
+                          </span>
+                          <span className="text-muted-foreground">{month.count}</span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </nav>
+          )}
+
+          {/* Feed */}
+          <div className="min-w-0 flex-1">
+            {posts.length === 0 ? (
+              <div className="flex flex-col items-center gap-1 px-4 py-16 text-center">
+                <p className="text-sm font-medium">
+                  {hasFilters ? "No posts match these filters" : "No posts yet"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {hasFilters
+                    ? "Try a different search or clear the filters."
+                    : "Create the first post to start the log."}
+                </p>
+              </div>
+            ) : (
+              groups.map((group) => (
+                <section
+                  key={group.key}
+                  id={`m-${group.key}`}
+                  data-month={group.key}
+                  aria-labelledby={`m-${group.key}-label`}
+                  className="scroll-mt-0 lg:scroll-mt-[45px]"
+                >
+                  <h2
+                    id={`m-${group.key}-label`}
+                    className="z-10 flex gap-2.5 border-b bg-zinc-50 px-4 py-1.5 font-mono text-[10px] font-normal tracking-[0.08em] text-zinc-600 uppercase lg:sticky lg:top-[45px] lg:px-5"
+                  >
+                    {group.label}
+                    <span className="text-muted-foreground">{group.posts.length}</span>
+                  </h2>
+                  {group.posts.map((post) => (
+                    <LogPost
+                      key={post.id}
+                      post={post}
+                      canEdit={canEditPost(post)}
+                      canDelete={isAdmin}
+                      onDeleted={handlePostDeleted}
+                      onEdit={() => openCompose(post.id)}
+                      className={cn(
+                        post.id === compose && "bg-brand/5 hover:bg-brand/5",
+                        post.id === savedId && "bg-amber-50 transition-colors duration-700"
+                      )}
+                    />
+                  ))}
+                </section>
+              ))
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex h-10 items-center gap-3 border-t px-4 font-mono text-[11px] text-muted-foreground lg:px-5">
+                <span className="flex-1">
+                  {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} OF{" "}
+                  {totalCount}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => updateUrl({ page: currentPage - 1 })}
+                  disabled={currentPage <= 1 || isPending}
+                >
+                  <ChevronLeft className="size-4" />
+                  <span className="sr-only">Previous page</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => updateUrl({ page: currentPage + 1 })}
+                  disabled={currentPage >= totalPages || isPending}
+                >
+                  <ChevronRight className="size-4" />
+                  <span className="sr-only">Next page</span>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
+      </div>
+
+      {sheetOpen && (
+        <>
+          {/* Below lg the sheet overlays the feed */}
+          <div aria-hidden="true" className="fixed inset-0 z-30 bg-zinc-950/20 lg:hidden" />
+          <div
+            className={cn(
+              "fixed inset-y-0 right-0 z-40 w-full max-w-[420px] border-l shadow-lg",
+              "lg:static lg:z-auto lg:w-[400px] lg:max-w-none lg:shrink-0 lg:shadow-[-8px_0_24px_-16px_rgb(24_24_27/0.18)]"
+            )}
+          >
+            <LogPostForm
+              key={compose}
+              post={editingPost}
+              users={users}
+              isAdmin={isAdmin}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              onClose={closeCompose}
+              onSaved={handleSaved}
+            />
+          </div>
+        </>
       )}
     </div>
   );

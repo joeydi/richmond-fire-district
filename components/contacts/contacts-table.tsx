@@ -1,17 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -19,17 +10,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ChevronUp,
   ChevronDown,
-  Search,
-  Pencil,
-  Trash2,
   ChevronLeft,
   ChevronRight,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  StickyNote,
+  Trash2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { Contact, ContactType } from "@/lib/actions/contacts";
+import { contactTypeDots, contactTypeLabels } from "./contact-types";
 
 interface ContactsTableProps {
   contacts: Contact[];
@@ -41,11 +42,15 @@ interface ContactsTableProps {
   sortBy: string;
   sortOrder: "asc" | "desc";
   canEdit: boolean;
+  selectedId: string | null;
+  onSelect: (contact: Contact) => void;
+  onCreate: () => void;
+  onEdit: (contact: Contact) => void;
   onDelete?: (contact: Contact) => void;
 }
 
 const typeOptions: Array<{ value: ContactType | "all"; label: string }> = [
-  { value: "all", label: "All Types" },
+  { value: "all", label: "All types" },
   { value: "resident", label: "Resident" },
   { value: "business", label: "Business" },
   { value: "contractor", label: "Contractor" },
@@ -54,30 +59,53 @@ const typeOptions: Array<{ value: ContactType | "all"; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
-const contactTypeLabels: Record<ContactType, string> = {
-  resident: "Resident",
-  business: "Business",
-  contractor: "Contractor",
-  utility: "Utility",
-  emergency: "Emergency",
-  other: "Other",
-};
+const thClass =
+  "border-b bg-zinc-50 px-2 py-1.5 text-left font-mono text-[10px] font-medium tracking-[0.06em] whitespace-nowrap text-muted-foreground uppercase first:pl-4 last:pr-4";
+const tdClass = "px-2 py-[7px] first:pl-4 last:pr-4";
 
-const contactTypeBadgeColors: Record<ContactType, string> = {
-  resident: "bg-blue-100 text-blue-800",
-  business: "bg-purple-100 text-purple-800",
-  contractor: "bg-orange-100 text-orange-800",
-  utility: "bg-green-100 text-green-800",
-  emergency: "bg-red-100 text-red-800",
-  other: "bg-slate-100 text-slate-800",
-};
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
 
-function SortIcon({ column, sortBy, sortOrder }: { column: string; sortBy: string; sortOrder: "asc" | "desc" }) {
-  if (sortBy !== column) return null;
-  return sortOrder === "asc" ? (
-    <ChevronUp className="ml-1 inline h-4 w-4" />
-  ) : (
-    <ChevronDown className="ml-1 inline h-4 w-4" />
+function TypeLabel({ type }: { type: ContactType }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap text-zinc-700 uppercase">
+      <span className={cn("size-1.5 rounded-full", contactTypeDots[type])} />
+      {contactTypeLabels[type]}
+    </span>
+  );
+}
+
+function SortHeader({
+  column,
+  children,
+  sortBy,
+  sortOrder,
+  onSort,
+}: {
+  column: string;
+  children: React.ReactNode;
+  sortBy: string;
+  sortOrder: "asc" | "desc";
+  onSort: (column: string) => void;
+}) {
+  const isSorted = sortBy === column;
+  return (
+    <th
+      aria-sort={isSorted ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
+      className={thClass}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className="inline-flex items-center gap-0.5 uppercase hover:text-foreground"
+      >
+        {children}
+        {isSorted &&
+          (sortOrder === "asc" ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />)}
+      </button>
+    </th>
   );
 }
 
@@ -91,13 +119,31 @@ export function ContactsTable({
   sortBy,
   sortOrder,
   canEdit,
+  selectedId,
+  onSelect,
+  onCreate,
+  onEdit,
   onDelete,
 }: ContactsTableProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(initialSearch);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const totalPages = Math.ceil(totalCount / pageSize);
+  const hasFilters = Boolean(initialSearch) || (typeFilter && typeFilter !== "all");
+
+  // "/" focuses search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const updateUrl = (params: Record<string, string | number>) => {
     const url = new URL(window.location.href);
@@ -118,43 +164,86 @@ export function ContactsTable({
     updateUrl({ search, page: 1 });
   };
 
-  const handleTypeChange = (value: string) => {
-    updateUrl({ type: value, page: 1 });
-  };
-
   const handleSort = (column: string) => {
-    const newOrder =
-      sortBy === column && sortOrder === "asc" ? "desc" : "asc";
+    const newOrder = sortBy === column && sortOrder === "asc" ? "desc" : "asc";
     updateUrl({ sortBy: column, sortOrder: newOrder });
   };
 
-  const handlePageChange = (page: number) => {
-    updateUrl({ page });
-  };
+  const sortProps = { sortBy, sortOrder, onSort: handleSort };
+  const emptyMessage = hasFilters
+    ? "No contacts match these filters."
+    : "No contacts yet. Add your first contact to get started.";
+
+  const actions = (contact: Contact) =>
+    canEdit && (
+      <div className="flex justify-end gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 text-muted-foreground"
+          title="Edit contact"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(contact);
+          }}
+        >
+          <Pencil className="size-3" />
+          <span className="sr-only">Edit {contact.name}</span>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 text-muted-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">More actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete?.(contact);
+              }}
+              className="cursor-pointer text-red-600 focus:text-red-600"
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete contact
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
 
   return (
-    <div className="space-y-4">
-      {/* Search and Filter */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <form onSubmit={handleSearch} className="flex max-w-sm flex-1 gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              type="text"
-              placeholder="Search contacts..."
+    <div className={cn("flex min-h-full flex-col", isPending && "opacity-70")}>
+      {/* Toolbar */}
+      <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2">
+        <form onSubmit={handleSearch} className="flex w-full sm:w-64">
+          <label className="flex h-7 flex-1 items-center gap-2 rounded-md border px-2 focus-within:border-ring">
+            <Search className="size-3.5 text-muted-foreground" />
+            <span className="sr-only">Search contacts</span>
+            <input
+              ref={searchRef}
+              type="search"
+              placeholder="Search contacts"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
+              className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
             />
-          </div>
-          <Button type="submit" variant="outline" disabled={isPending}>
-            Search
-          </Button>
+            <kbd className="hidden sm:inline-flex">/</kbd>
+          </label>
         </form>
 
-        <Select value={typeFilter || "all"} onValueChange={handleTypeChange}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Filter by type" />
+        <Select
+          value={typeFilter || "all"}
+          onValueChange={(value) => updateUrl({ type: value === "all" ? "" : value, page: 1 })}
+        >
+          <SelectTrigger size="sm" className="!h-7 px-2 text-xs" aria-label="Type">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {typeOptions.map((option) => (
@@ -164,143 +253,192 @@ export function ContactsTable({
             ))}
           </SelectContent>
         </Select>
+
+        <div className="flex-1" />
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {totalCount} {totalCount === 1 ? "CONTACT" : "CONTACTS"}
+        </span>
+        {canEdit && (
+          <Button size="sm" className="h-7 px-2.5 text-xs" onClick={onCreate}>
+            <Plus className="size-3.5" />
+            Contact
+          </Button>
+        )}
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead
-                className="cursor-pointer hover:bg-slate-50"
-                onClick={() => handleSort("name")}
+      {contacts.length === 0 ? (
+        <p className="flex-1 px-4 py-16 text-center text-xs text-muted-foreground">{emptyMessage}</p>
+      ) : (
+        <>
+          {/* Phones: stacked list with tap-to-call */}
+          <ul className="flex-1 sm:hidden">
+            {contacts.map((contact) => (
+              <li
+                key={contact.id}
+                data-contact-id={contact.id}
+                className={cn(
+                  "flex items-start gap-3 border-b border-zinc-100 px-4 py-2.5",
+                  contact.id === selectedId && "bg-brand/10"
+                )}
               >
-                Name
-                <SortIcon column="name" sortBy={sortBy} sortOrder={sortOrder} />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-slate-50"
-                onClick={() => handleSort("contact_type")}
-              >
-                Type
-                <SortIcon column="contact_type" sortBy={sortBy} sortOrder={sortOrder} />
-              </TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-slate-50"
-                onClick={() => handleSort("address")}
-              >
-                Address
-                <SortIcon column="address" sortBy={sortBy} sortOrder={sortOrder} />
-              </TableHead>
-              {canEdit && <TableHead className="w-24">Actions</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {contacts.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={canEdit ? 6 : 5}
-                  className="h-24 text-center text-slate-500"
-                >
-                  {initialSearch || typeFilter !== "all"
-                    ? "No contacts found matching your filters."
-                    : "No contacts yet. Add your first contact to get started."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              contacts.map((contact) => (
-                <TableRow
-                  key={contact.id}
-                  className="cursor-pointer hover:bg-slate-50"
-                  onClick={() =>
-                    router.push(`/dashboard/contacts/${contact.id}/edit`)
-                  }
-                >
-                  <TableCell className="font-medium">{contact.name}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="secondary"
-                      className={contactTypeBadgeColors[contact.contact_type]}
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelect(contact)}
+                      className="truncate text-left text-[13px] font-medium underline-offset-2 hover:underline"
                     >
-                      {contactTypeLabels[contact.contact_type]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-slate-600">
-                    {contact.phone || "—"}
-                  </TableCell>
-                  <TableCell className="text-slate-600">
-                    {contact.email || "—"}
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate text-slate-600">
-                    {contact.address || "—"}
-                  </TableCell>
-                  {canEdit && (
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(
-                              `/dashboard/contacts/${contact.id}/edit`
-                            );
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete?.(contact);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                      {contact.name}
+                    </button>
+                    <TypeLabel type={contact.contact_type} />
+                  </div>
+                  {contact.address && (
+                    <span className="truncate text-xs text-zinc-600">{contact.address}</span>
                   )}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs">
+                    {contact.phone && (
+                      <a href={`tel:${contact.phone}`} className="text-cyan-800 underline-offset-2 hover:underline">
+                        {contact.phone}
+                      </a>
+                    )}
+                    {contact.email && (
+                      <a href={`mailto:${contact.email}`} className="truncate text-cyan-800 underline-offset-2 hover:underline">
+                        {contact.email}
+                      </a>
+                    )}
+                  </div>
+                </div>
+                {actions(contact)}
+              </li>
+            ))}
+          </ul>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-600">
-            Showing {(currentPage - 1) * pageSize + 1} to{" "}
-            {Math.min(currentPage * pageSize, totalCount)} of {totalCount}{" "}
-            contacts
-          </p>
-          <div className="flex gap-2">
+          {/* Larger screens: table */}
+          <div className="relative hidden flex-1 overflow-x-auto sm:block">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr>
+                  <SortHeader column="name" {...sortProps}>Name</SortHeader>
+                  <SortHeader column="contact_type" {...sortProps}>Type</SortHeader>
+                  <th className={thClass}>Phone</th>
+                  <th className={thClass}>Email</th>
+                  <SortHeader column="address" {...sortProps}>Address</SortHeader>
+                  <th className={cn(thClass, "w-16")}>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map((contact) => (
+                  <tr
+                    key={contact.id}
+                    data-contact-id={contact.id}
+                    aria-selected={contact.id === selectedId}
+                    onClick={() => onSelect(contact)}
+                    className={cn(
+                      "group cursor-pointer border-b border-zinc-100 transition-colors",
+                      contact.id === selectedId ? "bg-brand/10" : "hover:bg-zinc-50/70"
+                    )}
+                  >
+                    <td className={cn(tdClass, "font-medium whitespace-nowrap")}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelect(contact);
+                          }}
+                          className="text-left outline-none focus-visible:underline"
+                        >
+                          {contact.name}
+                        </button>
+                        {contact.notes && (
+                          <StickyNote
+                            className="size-3 text-muted-foreground"
+                            aria-label="Has notes"
+                          >
+                            <title>{contact.notes}</title>
+                          </StickyNote>
+                        )}
+                      </span>
+                    </td>
+                    <td className={tdClass}>
+                      <TypeLabel type={contact.contact_type} />
+                    </td>
+                    <td className={cn(tdClass, "font-mono whitespace-nowrap")}>
+                      {contact.phone ? (
+                        <a
+                          href={`tel:${contact.phone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-zinc-700 underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                          {contact.phone}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className={cn(tdClass, "max-w-[220px] truncate")}>
+                      {contact.email ? (
+                        <a
+                          href={`mailto:${contact.email}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-zinc-700 underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                          {contact.email}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className={cn(tdClass, "max-w-xs truncate text-zinc-700")} title={contact.address ?? undefined}>
+                      {contact.address || <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className={cn(tdClass, "py-0")}>
+                      <div className="transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+                        {actions(contact)}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* Footer */}
+      <div className="sticky bottom-0 flex h-10 shrink-0 items-center gap-3 border-t bg-background px-4 font-mono text-[11px] text-muted-foreground">
+        <span className="flex-1">
+          {totalCount === 0
+            ? "0 CONTACTS"
+            : `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, totalCount)} OF ${totalCount}`}
+        </span>
+        {totalPages > 1 && (
+          <div className="flex gap-1">
             <Button
               variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage - 1)}
+              size="icon"
+              className="size-7"
+              onClick={() => updateUrl({ page: currentPage - 1 })}
               disabled={currentPage <= 1 || isPending}
             >
-              <ChevronLeft className="h-4 w-4" />
-              Previous
+              <ChevronLeft className="size-4" />
+              <span className="sr-only">Previous page</span>
             </Button>
             <Button
               variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage + 1)}
+              size="icon"
+              className="size-7"
+              onClick={() => updateUrl({ page: currentPage + 1 })}
               disabled={currentPage >= totalPages || isPending}
             >
-              Next
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="size-4" />
+              <span className="sr-only">Next page</span>
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

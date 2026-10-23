@@ -69,7 +69,7 @@ export async function requireAdmin(): Promise<UserProfile> {
   const profile = await getUserProfile();
 
   if (!profile) {
-    redirect("/login");
+    redirect("/");
   }
 
   if (profile.role !== "admin") {
@@ -86,7 +86,7 @@ export async function requireEditor(): Promise<UserProfile> {
   const profile = await getUserProfile();
 
   if (!profile) {
-    redirect("/login");
+    redirect("/");
   }
 
   if (profile.role !== "admin" && profile.role !== "editor") {
@@ -103,7 +103,7 @@ export async function requireAuth(): Promise<UserProfile> {
   const profile = await getUserProfile();
 
   if (!profile) {
-    redirect("/login");
+    redirect("/");
   }
 
   return profile;

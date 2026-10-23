@@ -4,12 +4,7 @@ import { ImportWizard } from "@/components/readings/import-wizard";
 
 export default async function ImportPage() {
   await requireEditor();
-  const meters = await getMeters();
-  const reservoirs = await getReservoirs();
+  const [meters, reservoirs] = await Promise.all([getMeters(), getReservoirs()]);
 
-  return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <ImportWizard meters={meters} reservoirs={reservoirs} />
-    </div>
-  );
+  return <ImportWizard meters={meters} reservoirs={reservoirs} />;
 }

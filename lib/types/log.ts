@@ -32,9 +32,21 @@ export interface GetLogPostsOptions {
   limit?: number;
   offset?: number;
   search?: string;
+  authorId?: string;
+  hasPhotos?: boolean;
+}
+
+export interface LogPostIndex {
+  /** created_at of every post matching the current filters, newest first */
+  dates: string[];
+  /** Everyone who has written at least one post */
+  authors: { id: string; name: string }[];
 }
 
 export interface LogPostInput {
   content: string;
   author_id?: string; // Only admins can set this for other users
 }
+
+/** `?compose=` on the log page: a new post, or else the id of the post being edited */
+export const NEW_POST = "new";

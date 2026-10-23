@@ -59,9 +59,9 @@ export function AcceptValueButton({
           ? "Select a specific meter to accept"
           : "Accept this estimated value"
       }
-      className="h-6 w-6 p-0"
+      className="-my-1 size-5 p-0"
     >
-      <Check className="h-4 w-4 text-green-600" />
+      <Check className="size-3.5 text-green-600" />
     </Button>
   );
 }

@@ -6,207 +6,174 @@ import Papa from "papaparse";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ParsedCSV } from "./import-wizard";
+import { StepFooter, StepTable, tdClass, thClass } from "./import-ui";
+
+const PREVIEW_ROWS = 5;
 
 interface CSVUploadProps {
+  /** The file already chosen, when coming back from a later step */
+  initial: ParsedCSV | null;
   onUpload: (data: ParsedCSV) => void;
 }
 
-export function CSVUpload({ onUpload }: CSVUploadProps) {
+export function CSVUpload({ initial, onUpload }: CSVUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<ParsedCSV | null>(null);
+  const [preview, setPreview] = useState<ParsedCSV | null>(initial);
 
   const parseCSV = useCallback((file: File) => {
     setError(null);
 
-    Papa.parse(file, {
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setError("Choose a .csv file");
+      return;
+    }
+
+    Papa.parse<string[]>(file, {
       complete: (results) => {
         if (results.errors.length > 0) {
           setError(`Parse error: ${results.errors[0].message}`);
           return;
         }
 
-        const data = results.data as string[][];
-
-        if (data.length < 2) {
-          setError("CSV must have at least a header row and one data row");
-          return;
-        }
-
         // Filter out empty rows
-        const filteredData = data.filter(row => row.some(cell => cell.trim() !== ""));
+        const filteredData = results.data.filter((row) => row.some((cell) => cell.trim() !== ""));
 
         if (filteredData.length < 2) {
-          setError("CSV must have at least a header row and one data row");
+          setError("The file needs a header row and at least one data row");
           return;
         }
 
-        const headers = filteredData[0];
-        const rows = filteredData.slice(1);
-
-        const parsed: ParsedCSV = { headers, rows };
-        setPreview(parsed);
-        setFile(file);
+        setPreview({ fileName: file.name, headers: filteredData[0], rows: filteredData.slice(1) });
       },
       error: (err) => {
-        setError(`Failed to parse CSV: ${err.message}`);
+        setError(`Could not read the file: ${err.message}`);
       },
     });
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const droppedFile = e.dataTransfer.files[0];
+      if (droppedFile) parseCSV(droppedFile);
+    },
+    [parseCSV]
+  );
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  }, []);
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFile = e.target.files?.[0];
+      // Reset so choosing the same file again still fires change
+      e.target.value = "";
+      if (selectedFile) parseCSV(selectedFile);
+    },
+    [parseCSV]
+  );
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const droppedFile = e.dataTransfer.files[0];
-    if (!droppedFile) return;
-
-    if (!droppedFile.name.endsWith(".csv")) {
-      setError("Please upload a CSV file");
-      return;
-    }
-
-    parseCSV(droppedFile);
-  }, [parseCSV]);
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    if (!selectedFile.name.endsWith(".csv")) {
-      setError("Please upload a CSV file");
-      return;
-    }
-
-    parseCSV(selectedFile);
-  }, [parseCSV]);
-
-  const handleClear = useCallback(() => {
-    setFile(null);
-    setPreview(null);
-    setError(null);
-  }, []);
-
-  const handleContinue = useCallback(() => {
-    if (preview) {
-      onUpload(preview);
-    }
-  }, [preview, onUpload]);
-
-  if (preview && file) {
+  if (preview) {
     return (
-      <div className="space-y-4">
-        {/* File info */}
-        <div className="flex items-center justify-between rounded-lg border bg-slate-50 p-4">
-          <div className="flex items-center gap-3">
-            <FileSpreadsheet className="h-8 w-8 text-green-600" />
-            <div>
-              <p className="font-medium text-slate-900">{file.name}</p>
-              <p className="text-sm text-slate-500">
-                {preview.headers.length} columns, {preview.rows.length} rows
+      <>
+        <div className="flex flex-col gap-3 p-4">
+          <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+            <FileSpreadsheet className="size-4 shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium">{preview.fileName}</p>
+              <p className="font-mono text-[11px] text-muted-foreground">
+                {preview.headers.length} COLUMNS · {preview.rows.length.toLocaleString()}{" "}
+                {preview.rows.length === 1 ? "ROW" : "ROWS"}
               </p>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={() => setPreview(null)}
+              aria-label="Choose a different file"
+            >
+              <X className="size-4" />
+            </Button>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleClear}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
 
-        {/* Preview table */}
-        <div className="rounded-lg border">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-slate-50">
-                  {preview.headers.map((header, i) => (
-                    <th
-                      key={i}
-                      className="whitespace-nowrap px-4 py-2 text-left font-medium text-slate-700"
-                    >
-                      {header || `Column ${i + 1}`}
-                    </th>
+          <StepTable>
+            <thead>
+              <tr>
+                {preview.headers.map((header, i) => (
+                  <th key={i} className={thClass}>
+                    {header || `Column ${i + 1}`}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {preview.rows.slice(0, PREVIEW_ROWS).map((row, rowIndex) => (
+                <tr key={rowIndex} className="border-b last:border-0">
+                  {preview.headers.map((_, cellIndex) => (
+                    <td key={cellIndex} className={cn(tdClass, "font-mono text-zinc-700")}>
+                      {row[cellIndex] || <span className="text-muted-foreground">—</span>}
+                    </td>
                   ))}
                 </tr>
-              </thead>
-              <tbody>
-                {preview.rows.slice(0, 5).map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-b last:border-0">
-                    {row.map((cell, cellIndex) => (
-                      <td
-                        key={cellIndex}
-                        className="whitespace-nowrap px-4 py-2 text-slate-600"
-                      >
-                        {cell || <span className="text-slate-300">—</span>}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {preview.rows.length > 5 && (
-            <div className="border-t bg-slate-50 px-4 py-2 text-center text-sm text-slate-500">
-              Showing 5 of {preview.rows.length} rows
-            </div>
-          )}
+              ))}
+            </tbody>
+          </StepTable>
         </div>
 
-        <div className="flex justify-end">
-          <Button onClick={handleContinue}>Continue</Button>
-        </div>
-      </div>
+        <StepFooter
+          hint={
+            preview.rows.length > PREVIEW_ROWS
+              ? `FIRST ${PREVIEW_ROWS} OF ${preview.rows.length.toLocaleString()} ROWS`
+              : undefined
+          }
+        >
+          <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => onUpload(preview)}>
+            Continue
+          </Button>
+        </StepFooter>
+      </>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Drop zone */}
-      <div
+    <div className="flex flex-col gap-3 p-4">
+      <label
         className={cn(
-          "relative rounded-lg border-2 border-dashed p-12 text-center transition-colors",
-          isDragging
-            ? "border-blue-400 bg-blue-50"
-            : "border-slate-300 hover:border-slate-400"
+          "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed px-4 py-14 text-center transition-colors",
+          "focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand/20",
+          isDragging ? "border-brand bg-brand/5" : "border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50"
         )}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+        }}
         onDrop={handleDrop}
       >
-        <input
-          type="file"
-          accept=".csv"
-          onChange={handleFileSelect}
-          className="absolute inset-0 cursor-pointer opacity-0"
-        />
-        <Upload
-          className={cn(
-            "mx-auto h-12 w-12",
-            isDragging ? "text-blue-500" : "text-slate-400"
+        <input type="file" accept=".csv,text/csv" onChange={handleFileSelect} className="sr-only" />
+        <Upload className={cn("size-5", isDragging ? "text-brand" : "text-muted-foreground")} />
+        <span className="text-[13px] font-medium">
+          {isDragging ? (
+            "Drop to read the file"
+          ) : (
+            <>
+              Drop a CSV here or <span className="text-brand underline underline-offset-2">browse</span>
+            </>
           )}
-        />
-        <p className="mt-4 text-sm font-medium text-slate-700">
-          {isDragging ? "Drop your CSV file here" : "Drag and drop your CSV file here"}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">or click to browse</p>
-      </div>
+        </span>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          FIRST ROW IS COLUMN NAMES · ONE READING TIME PER ROW
+        </span>
+      </label>
 
-      {/* Error message */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+        <p role="alert" className="flex items-center gap-2 text-xs text-red-600">
+          <AlertCircle className="size-3.5 shrink-0" />
           {error}
-        </div>
+        </p>
       )}
     </div>
   );

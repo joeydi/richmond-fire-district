@@ -1,21 +1,19 @@
 import { getInfrastructurePoints } from "@/lib/actions/map";
+import { getInfrastructurePointDetails } from "@/lib/actions/infrastructure";
 import { isAdmin } from "@/lib/auth/roles";
 import { MapView } from "./map-view";
 
-export default async function MapPage() {
-  const [infrastructurePoints, userIsAdmin] = await Promise.all([
+interface MapPageProps {
+  searchParams: Promise<{ point?: string }>;
+}
+
+export default async function MapPage({ searchParams }: MapPageProps) {
+  const { point } = await searchParams;
+  const [infrastructurePoints, userIsAdmin, details] = await Promise.all([
     getInfrastructurePoints(),
     isAdmin(),
+    point ? getInfrastructurePointDetails(point) : null,
   ]);
 
-  return (
-    <div className="flex h-full flex-col">
-      <div className="relative min-h-0 flex-1">
-        <MapView
-          infrastructurePoints={infrastructurePoints}
-          isAdmin={userIsAdmin}
-        />
-      </div>
-    </div>
-  );
+  return <MapView infrastructurePoints={infrastructurePoints} isAdmin={userIsAdmin} details={details} />;
 }
