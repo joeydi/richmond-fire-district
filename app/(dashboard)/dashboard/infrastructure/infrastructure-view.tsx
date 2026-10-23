@@ -4,9 +4,8 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { InfrastructureTable } from "@/components/infrastructure/infrastructure-table";
-import { PointSheet } from "@/components/infrastructure/point-sheet";
+import { NewPointSheet, PointSheet } from "@/components/infrastructure/point-sheet";
 import { DeleteDialog } from "@/components/infrastructure/delete-dialog";
-import { InfrastructureForm } from "@/components/map/infrastructure-form";
 import type { InfrastructurePoint } from "@/lib/types/infrastructure";
 import type { InfrastructurePointDetails } from "@/lib/actions/infrastructure";
 
@@ -53,11 +52,14 @@ export function InfrastructureView({
   // Highlights the clicked row right away while the details load
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [pointToDelete, setPointToDelete] = useState<InfrastructurePoint | null>(null);
-  const [pointToEdit, setPointToEdit] = useState<InfrastructurePoint | null>(null);
+  // Editing and creating happen in the sheet, in place of the details
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
   const selectedId = isPending && pendingId !== null ? pendingId : (details?.point.id ?? null);
   const selectedIndex = points.findIndex((p) => p.id === selectedId);
+  const sheetOpen = isCreating || (details !== null && (selectedId === details.point.id || isPending));
+  const editing = !isCreating && details !== null && editingId === details.point.id;
 
   const navigate = useCallback(
     (params: Record<string, string | number>, mode: "push" | "replace") => {
@@ -85,9 +87,19 @@ export function InfrastructureView({
   const select = useCallback(
     (id: string | null) => {
       setPendingId(id);
+      setEditingId(null);
+      setIsCreating(false);
       navigate({ point: id ?? "" }, "replace");
     },
     [navigate]
+  );
+
+  const editPoint = useCallback(
+    (point: InfrastructurePoint) => {
+      if (point.id !== details?.point.id) select(point.id);
+      setEditingId(point.id);
+    },
+    [details, select]
   );
 
   const selectOffset = useCallback(
@@ -106,6 +118,14 @@ export function InfrastructureView({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target) || isDialogOpen()) return;
+      if (isCreating || editing) {
+        // Only Esc while a form is open, so stray keys can't navigate away from unsaved changes
+        if (e.key === "Escape") {
+          setIsCreating(false);
+          setEditingId(null);
+        }
+        return;
+      }
       if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
         selectOffset(1);
@@ -116,14 +136,12 @@ export function InfrastructureView({
         select(null);
       } else if (e.key === "e" && isAdmin && details) {
         e.preventDefault();
-        setPointToEdit(details.point);
+        setEditingId(details.point.id);
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectOffset, select, selectedId, isAdmin, details]);
-
-  const sheetOpen = details !== null && (selectedId === details.point.id || isPending);
+  }, [selectOffset, select, selectedId, isAdmin, details, isCreating, editing]);
 
   return (
     <div data-flush className="flex h-full">
@@ -143,26 +161,35 @@ export function InfrastructureView({
           selectedId={selectedId}
           updateUrl={updateUrl}
           onSelect={(point) => select(point.id === selectedId ? null : point.id)}
-          onEdit={setPointToEdit}
-          onCreate={() => setIsCreating(true)}
+          onEdit={editPoint}
+          onCreate={() => {
+            setEditingId(null);
+            setIsCreating(true);
+          }}
         />
       </div>
 
-      {sheetOpen && details && (
+      {sheetOpen && (
         <>
           {/* Below lg the sheet overlays the table */}
           <div
             aria-hidden="true"
             className="fixed inset-0 z-30 bg-zinc-950/20 lg:hidden"
-            onClick={() => select(null)}
+            onClick={() => (isCreating ? setIsCreating(false) : select(null))}
           />
           <div
             className={cn(
               "fixed inset-y-0 right-0 z-40 w-full max-w-[420px] border-l shadow-lg transition-opacity",
               "lg:static lg:z-auto lg:w-[400px] lg:max-w-none lg:shrink-0 lg:shadow-[-8px_0_24px_-16px_rgb(24_24_27/0.18)]",
-              isPending && "opacity-60"
+              isPending && !isCreating && "opacity-60"
             )}
           >
+            {isCreating ? (
+              <NewPointSheet
+                onClose={() => setIsCreating(false)}
+                onSaved={(point) => select(point.id)}
+              />
+            ) : details && (
             <PointSheet
               details={details}
               isAdmin={isAdmin}
@@ -179,9 +206,16 @@ export function InfrastructureView({
                   : undefined
               }
               onSelect={select}
-              onEdit={() => setPointToEdit(details.point)}
+              onEdit={() => setEditingId(details.point.id)}
               onDelete={() => setPointToDelete(details.point)}
+              editing={editing}
+              onCancelEdit={() => setEditingId(null)}
+              onSaved={() => {
+                setEditingId(null);
+                router.refresh();
+              }}
             />
+            )}
           </div>
         </>
       )}
@@ -191,21 +225,6 @@ export function InfrastructureView({
         open={!!pointToDelete}
         onOpenChange={(open) => {
           if (!open) setPointToDelete(null);
-        }}
-      />
-      <InfrastructureForm
-        open={!!pointToEdit || isCreating}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPointToEdit(null);
-            setIsCreating(false);
-          }
-        }}
-        point={pointToEdit}
-        onSuccess={() => {
-          setPointToEdit(null);
-          setIsCreating(false);
-          router.refresh();
         }}
       />
     </div>
