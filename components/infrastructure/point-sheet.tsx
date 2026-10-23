@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowDown, ArrowUp, MoreHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +14,7 @@ import {
 import { InfrastructureImages } from "@/components/map/infrastructure-images";
 import { getLogDateParts } from "@/components/log/log-dates";
 import { PointMapPreview } from "./point-map-preview";
-import { PointForm } from "./point-form";
+import { PointForm, type LatLng } from "./point-form";
 import {
   INFRASTRUCTURE_COLORS,
   INFRASTRUCTURE_LABELS,
@@ -40,6 +41,14 @@ interface PointSheetProps {
   editing: boolean;
   onCancelEdit: () => void;
   onSaved: (point: InfrastructurePoint) => void;
+  /** On the map page: no map preview or map link, and the form takes map clicks */
+  mapContext?: MapFormContext;
+}
+
+/** Wires the sheet's form to the live map on the map page */
+export interface MapFormContext {
+  pickedLocation: LatLng | null;
+  onLocationChange: (location: LatLng | null) => void;
 }
 
 function SectionLabel({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
@@ -64,6 +73,7 @@ export function PointSheet({
   editing,
   onCancelEdit,
   onSaved,
+  mapContext,
 }: PointSheetProps) {
   const { point, nearby, mentions } = details;
   const coords = `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`;
@@ -83,30 +93,40 @@ export function PointSheet({
     >
       {/* Sheet toolbar */}
       <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2 pl-3">
-        <Button
-          variant="outline"
-          size="icon"
-          className="size-7"
-          onClick={onPrev}
-          disabled={!onPrev || editing}
-          title="Previous point (↑)"
+        {/* The map has no list order to step through */}
+        {!mapContext && (
+          <>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-7"
+              onClick={onPrev}
+              disabled={!onPrev || editing}
+              title="Previous point (↑)"
+            >
+              <ArrowUp className="size-3.5" />
+              <span className="sr-only">Previous point</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-7"
+              onClick={onNext}
+              disabled={!onNext || editing}
+              title="Next point (↓)"
+            >
+              <ArrowDown className="size-3.5" />
+              <span className="sr-only">Next point</span>
+            </Button>
+          </>
+        )}
+        <span
+          className={cn(
+            "flex-1 font-mono text-[11px] text-muted-foreground",
+            mapContext ? "ml-1 tracking-[0.06em]" : "ml-1.5"
+          )}
         >
-          <ArrowUp className="size-3.5" />
-          <span className="sr-only">Previous point</span>
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          className="size-7"
-          onClick={onNext}
-          disabled={!onNext || editing}
-          title="Next point (↓)"
-        >
-          <ArrowDown className="size-3.5" />
-          <span className="sr-only">Next point</span>
-        </Button>
-        <span className="ml-1.5 flex-1 font-mono text-[11px] text-muted-foreground">
-          {editing ? "EDITING" : positionLabel}
+          {editing ? "EDITING" : (positionLabel ?? (mapContext ? "POINT" : null))}
         </span>
         {isAdmin && !editing && (
           <>
@@ -146,7 +166,13 @@ export function PointSheet({
 
       {editing ? (
         <div className="min-h-0 flex-1">
-          <PointForm point={point} onCancel={onCancelEdit} onSaved={onSaved} />
+          <PointForm
+            point={point}
+            onCancel={onCancelEdit}
+            onSaved={onSaved}
+            pickedLocation={mapContext?.pickedLocation}
+            onLocationChange={mapContext?.onLocationChange}
+          />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
@@ -173,7 +199,7 @@ export function PointSheet({
 
           {/* Location */}
           <div className="flex flex-col gap-2 px-4 pb-3.5">
-            <PointMapPreview point={point} nearby={nearby} />
+            {!mapContext && <PointMapPreview point={point} nearby={nearby} />}
             <div className="flex items-center gap-1.5">
               <span className="flex-1 font-mono text-xs">{coords}</span>
               <Button
@@ -193,6 +219,11 @@ export function PointSheet({
                   DIRECTIONS ↗
                 </a>
               </Button>
+              {!mapContext && (
+                <Button variant="outline" size="sm" className="h-6 px-2 font-mono text-[10px]" asChild>
+                  <Link href={`/dashboard/map?point=${point.id}`}>MAP</Link>
+                </Button>
+              )}
             </div>
           </div>
 
@@ -300,7 +331,7 @@ export function PointSheet({
       )}
 
       <div className="hidden h-9 shrink-0 items-center border-t px-4 font-mono text-[10px] text-muted-foreground lg:flex">
-        {editing ? "ESC CANCEL" : <>ESC CLOSE · ↑↓ NAVIGATE{isAdmin && " · E EDIT"}</>}
+        {editing ? "ESC CANCEL" : <>ESC CLOSE{!mapContext && " · ↑↓ NAVIGATE"}{isAdmin && " · E EDIT"}</>}
       </div>
     </aside>
   );
@@ -310,9 +341,13 @@ export function PointSheet({
 export function NewPointSheet({
   onClose,
   onSaved,
+  initialLocation,
+  mapContext,
 }: {
   onClose: () => void;
   onSaved: (point: InfrastructurePoint) => void;
+  initialLocation?: LatLng | null;
+  mapContext?: MapFormContext;
 }) {
   return (
     <aside aria-label="New infrastructure point" className="flex h-full w-full flex-col bg-background">
@@ -332,7 +367,13 @@ export function NewPointSheet({
         </Button>
       </div>
       <div className="min-h-0 flex-1">
-        <PointForm onCancel={onClose} onSaved={onSaved} />
+        <PointForm
+          onCancel={onClose}
+          onSaved={onSaved}
+          initialLocation={initialLocation}
+          pickedLocation={mapContext?.pickedLocation}
+          onLocationChange={mapContext?.onLocationChange}
+        />
       </div>
     </aside>
   );

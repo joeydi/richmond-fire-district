@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -55,15 +55,33 @@ function FieldError({ message }: { message?: string }) {
   return message ? <p className="text-xs text-red-600">{message}</p> : null;
 }
 
+export interface LatLng {
+  lat: number;
+  lng: number;
+}
+
 interface PointFormProps {
   /** Omit to create a new point */
   point?: InfrastructurePoint | null;
+  /** Starting location for a new point */
+  initialLocation?: LatLng | null;
+  /** A location picked elsewhere (the map); applied whenever it changes */
+  pickedLocation?: LatLng | null;
+  /** Reports the coordinates as they're edited, e.g. to move a draft marker */
+  onLocationChange?: (location: LatLng | null) => void;
   onCancel: () => void;
   onSaved: (point: InfrastructurePoint) => void;
 }
 
 /** Edit or create form for the infrastructure side sheet */
-export function PointForm({ point, onCancel, onSaved }: PointFormProps) {
+export function PointForm({
+  point,
+  initialLocation,
+  pickedLocation,
+  onLocationChange,
+  onCancel,
+  onSaved,
+}: PointFormProps) {
   const isEditing = !!point;
   const [isLocating, setIsLocating] = useState(false);
 
@@ -74,8 +92,8 @@ export function PointForm({ point, onCancel, onSaved }: PointFormProps) {
       type: point?.type ?? "hydrant",
       // "unknown" isn't offered in the form
       status: point && point.status !== "unknown" ? point.status : "active",
-      latitude: point?.latitude,
-      longitude: point?.longitude,
+      latitude: point?.latitude ?? initialLocation?.lat,
+      longitude: point?.longitude ?? initialLocation?.lng,
       notes: point?.notes ?? "",
     },
   });
@@ -122,6 +140,20 @@ export function PointForm({ point, onCancel, onSaved }: PointFormProps) {
 
   const type = useWatch({ control: form.control, name: "type" });
   const status = useWatch({ control: form.control, name: "status" });
+  const latitude = useWatch({ control: form.control, name: "latitude" });
+  const longitude = useWatch({ control: form.control, name: "longitude" });
+
+  useEffect(() => {
+    if (!pickedLocation) return;
+    const options = { shouldDirty: true, shouldValidate: true };
+    form.setValue("latitude", Number(pickedLocation.lat.toFixed(6)), options);
+    form.setValue("longitude", Number(pickedLocation.lng.toFixed(6)), options);
+  }, [pickedLocation, form]);
+
+  useEffect(() => {
+    const valid = Number.isFinite(latitude) && Number.isFinite(longitude);
+    onLocationChange?.(valid ? { lat: latitude, lng: longitude } : null);
+  }, [latitude, longitude, onLocationChange]);
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="flex h-full flex-col">
@@ -235,6 +267,7 @@ export function PointForm({ point, onCancel, onSaved }: PointFormProps) {
               <FieldError message={errors.longitude?.message} />
             </div>
           </div>
+          {onLocationChange && <p className="text-xs text-muted-foreground">Or click the map to set it.</p>}
         </fieldset>
 
         <div className="flex flex-col gap-1.5">
