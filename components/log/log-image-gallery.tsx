@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { Trash2, Loader2, ImageOff, X } from "lucide-react";
+import { Trash2, ImageOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -86,7 +86,7 @@ export function LogImageGallery({
         className={cn(
           variant === "compact"
             ? "flex flex-wrap items-center gap-1"
-            : "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
+            : "grid grid-cols-3 gap-1.5"
         )}
       >
         {images.map((image) => (
@@ -96,7 +96,7 @@ export function LogImageGallery({
               "relative group overflow-hidden bg-zinc-100 cursor-pointer",
               variant === "compact"
                 ? "size-16 rounded-sm border border-zinc-200"
-                : "aspect-square rounded-md"
+                : "aspect-square rounded-md border"
             )}
             onClick={() => setSelectedImage(image)}
           >
@@ -109,24 +109,25 @@ export function LogImageGallery({
                 sizes={
                   variant === "compact"
                     ? "64px"
-                    : "(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                    : "(max-width: 1024px) 33vw, 96px"
                 }
               />
             ) : (
               <div className="flex items-center justify-center h-full">
-                <ImageOff className="h-8 w-8 text-slate-300" />
+                <ImageOff className="size-5 text-zinc-300" />
               </div>
             )}
 
             {canEdit && (
-              <Button
-                size="icon"
-                variant="destructive"
-                className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+              <button
+                type="button"
+                className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-sm bg-zinc-900/70 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600 focus-visible:opacity-100 max-lg:opacity-100"
                 onClick={(e) => handleDeleteClick(e, image)}
+                title="Delete photo"
               >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+                <Trash2 className="size-3" />
+                <span className="sr-only">Delete {image.filename}</span>
+              </button>
             )}
           </div>
         ))}

@@ -43,14 +43,14 @@ export function LogPostImages({ logPostId, canEdit = false }: LogPostImagesProps
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 text-slate-400 animate-spin" />
+      <div className="flex h-16 items-center justify-center">
+        <Loader2 className="size-4 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-2">
       {images.length > 0 && (
         <LogImageGallery
           images={images}

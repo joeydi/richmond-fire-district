@@ -113,17 +113,24 @@ export function LogPostsList({
     return byYear;
   }, [index.dates, pageSize]);
 
-  // "/" focuses search
+  // "/" focuses search, "c" starts a new post
   useEffect(() => {
+    // "g c" is the go-to-Contacts shortcut, so a "c" right after "g" isn't ours
+    let lastG = 0;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !isTypingTarget(e.target)) {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
+      if (e.key === "/") {
         e.preventDefault();
         searchRef.current?.focus();
+      } else if (e.key === "c" && canCreate && Date.now() - lastG > 1000) {
+        e.preventDefault();
+        router.push("/dashboard/log/new");
       }
+      lastG = e.key === "g" ? Date.now() : 0;
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [canCreate, router]);
 
   // Highlight the month currently at the top of the feed
   useEffect(() => {
@@ -268,7 +275,7 @@ export function LogPostsList({
           <Button size="sm" className="h-7 px-2.5 text-xs" asChild>
             <Link href="/dashboard/log/new">
               <Plus className="size-3.5" />
-              New post
+              New post <kbd className="ml-0.5 hidden border-white/30 text-white/70 sm:inline-flex">C</kbd>
             </Link>
           </Button>
         )}

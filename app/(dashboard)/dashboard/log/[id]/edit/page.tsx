@@ -39,15 +39,12 @@ export default async function EditLogPostPage({ params }: EditLogPostPageProps) 
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="rounded-lg border bg-white p-6">
-        <LogPostForm
-          post={post}
-          users={users}
-          isAdmin={userIsAdmin}
-          currentUserId={profile?.id || ""}
-        />
-      </div>
-    </div>
+    <LogPostForm
+      post={post}
+      users={users}
+      isAdmin={userIsAdmin}
+      currentUserId={profile?.id || ""}
+      currentUserName={profile?.full_name || profile?.email || ""}
+    />
   );
 }

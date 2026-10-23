@@ -305,11 +305,11 @@ export async function createLogPost(input: {
 
 /**
  * Update an existing log post
- * Authors can update their own, admins can update any
+ * Authors can update their own, admins can update any and change the author
  */
 export async function updateLogPost(
   id: string,
-  input: { content: string; created_at?: string }
+  input: { content: string; created_at?: string; author_id?: string }
 ): Promise<{ success: boolean; error?: string }> {
   const profile = await requireEditor();
 
@@ -340,6 +340,7 @@ export async function updateLogPost(
     content: string;
     updated_at: string;
     created_at?: string;
+    author_id?: string;
   } = {
     content: parsed.data.content,
     updated_at: new Date().toISOString(),
@@ -347,6 +348,13 @@ export async function updateLogPost(
 
   if (parsed.data.created_at) {
     updateData.created_at = parsed.data.created_at;
+  }
+
+  if (parsed.data.author_id && parsed.data.author_id !== post.author_id) {
+    if (!userIsAdmin) {
+      return { success: false, error: "Only admins can change a post's author" };
+    }
+    updateData.author_id = parsed.data.author_id;
   }
 
   const { error } = await supabase

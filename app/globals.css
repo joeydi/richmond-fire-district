@@ -189,3 +189,42 @@
   border-radius: var(--radius);
   box-shadow: 0 1px 2px rgb(24 24 27 / 0.04);
 }
+
+/* MDXEditor in Console style: a flat toolbar over a borderless writing area */
+.console-editor .mdxeditor {
+  font-family: inherit;
+}
+.console-editor .mdxeditor-toolbar {
+  position: sticky;
+  top: var(--editor-sticky-top, 0);
+  z-index: 1;
+  /* Wraps rather than scrolling sideways on phones */
+  flex-wrap: wrap;
+  overflow: visible;
+  min-height: 40px;
+  height: auto;
+  padding: 4px 12px;
+  gap: 2px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+.console-editor .mdxeditor-toolbar button,
+.console-editor .mdxeditor-toolbar [role="combobox"] {
+  border-radius: calc(var(--radius) - 4px);
+  color: var(--muted-foreground);
+}
+.console-editor .mdxeditor-toolbar button:hover,
+.console-editor .mdxeditor-toolbar [data-state="on"] {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.console-editor .mdxeditor-root-contenteditable [contenteditable],
+.console-editor .mdxeditor-root-contenteditable [class*="_placeholder_"] {
+  padding: 16px 20px;
+  font-size: 14px;
+}
+.console-editor .mdxeditor-root-contenteditable [contenteditable] {
+  max-width: 800px;
+  min-height: 240px;
+}
