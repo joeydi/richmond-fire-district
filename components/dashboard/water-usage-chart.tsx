@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
@@ -51,6 +51,8 @@ const RANGES: { value: DateRange; label: string }[] = [
   { value: "custom", label: "…" },
 ];
 
+const INTRO_MS = 500;
+
 const fmt = (n: number) => Math.round(n).toLocaleString();
 
 export function WaterUsageChart({
@@ -62,12 +64,26 @@ export function WaterUsageChart({
   const [range, setRange] = useState<DateRange>("30d");
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
+  // Off: the y-axis fits the data so day-to-day variation is visible.
+  // On: it starts at 0 so values compare by absolute size.
+  const [zeroBaseline, setZeroBaseline] = useState(false);
   const [monoFont] = useState(() =>
     typeof document === "undefined"
       ? "monospace"
       : `${getComputedStyle(document.body).getPropertyValue("--font-geist-mono")}, monospace`
   );
   const chartRef = useRef<ReactECharts>(null);
+
+  // The chart remounts per range (see the key below). MIN/MAX markers are
+  // added once its intro sweep has finished, so their labels don't appear
+  // ahead of the line.
+  const chartKey = `${range}:${customStart}:${customEnd}`;
+  const [markersKey, setMarkersKey] = useState<string | null>(null);
+  const markersReady = markersKey === chartKey;
+  useEffect(() => {
+    const timer = setTimeout(() => setMarkersKey(chartKey), INTRO_MS);
+    return () => clearTimeout(timer);
+  }, [chartKey]);
 
   const { filteredData, dateRange } = filterDataByRange(
     data,
@@ -91,7 +107,10 @@ export function WaterUsageChart({
   const axisText = { color: MUTED, fontFamily: monoFont, fontSize: 10 };
 
   const option = {
-    animationDuration: 300,
+    animationDuration: INTRO_MS,
+    animationEasing: "cubicOut",
+    animationDurationUpdate: 300,
+    animationEasingUpdate: "cubicOut",
     grid: { left: 4, right: 20, top: 24, bottom: 4, containLabel: true },
     xAxis: {
       type: "category",
@@ -103,7 +122,8 @@ export function WaterUsageChart({
     },
     yAxis: {
       type: "value",
-      scale: true,
+      scale: !zeroBaseline,
+      min: zeroBaseline ? 0 : undefined,
       splitNumber: 4,
       axisLine: { show: false },
       axisLabel: { ...axisText, formatter: (v: number) => v.toLocaleString() },
@@ -156,7 +176,7 @@ export function WaterUsageChart({
             }
           : undefined,
         markPoint:
-          groupedData.length > 2
+          markersReady && groupedData.length > 2
             ? {
                 symbol: "circle",
                 symbolSize: 7,
@@ -268,6 +288,21 @@ export function WaterUsageChart({
           ))}
         </div>
 
+        <button
+          type="button"
+          aria-pressed={zeroBaseline}
+          onClick={() => setZeroBaseline((on) => !on)}
+          title="Start the y-axis at zero"
+          className={cn(
+            "h-7 rounded-md border px-2 font-mono text-[11px] transition-colors",
+            zeroBaseline
+              ? "border-brand bg-brand/10 text-foreground hover:bg-brand/15"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Y FROM 0
+        </button>
+
         {range === "custom" && (
           <div className="flex items-center gap-1.5 font-mono text-[11px]">
             <label className="sr-only" htmlFor="from-date">From</label>
@@ -275,7 +310,9 @@ export function WaterUsageChart({
               id="from-date"
               type="date"
               value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
+              onChange={(e) => {
+                            setCustomStart(e.target.value);
+              }}
               className="h-7 rounded-md border px-1.5"
             />
             <span className="text-muted-foreground">→</span>
@@ -284,7 +321,9 @@ export function WaterUsageChart({
               id="to-date"
               type="date"
               value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
+              onChange={(e) => {
+                            setCustomEnd(e.target.value);
+              }}
               className="h-7 rounded-md border px-1.5"
             />
           </div>
@@ -333,6 +372,10 @@ export function WaterUsageChart({
       ) : (
         <div className="h-[260px] lg:h-[300px]">
           <ReactECharts
+            // ECharts morphs the old line into the new one on update, which tangles
+            // when the number of points changes. Remount per range so it redraws
+            // with the intro sweep; same-range updates (Y FROM 0) still animate.
+            key={chartKey}
             ref={chartRef}
             option={option}
             notMerge
