@@ -75,18 +75,64 @@ export async function getLogPosts(
     return { data: [], count: 0 };
   }
 
-  // Fetch images for each post
-  const postsWithImages = await Promise.all(
-    ((data ?? []) as unknown as LogPost[]).map(async (post) => {
-      const images = await getLogPostImages(post.id);
-      return {
+  const posts = (data ?? []) as unknown as LogPost[];
+  const imagesByPost = await getImagesForPosts(posts.map((post) => post.id));
+  const postsWithImages = posts.map(
+    (post) =>
+      ({
         ...post,
-        images,
-      } as LogPostWithImages;
-    })
+        images: imagesByPost.get(post.id) ?? [],
+      }) as LogPostWithImages
   );
 
   return { data: postsWithImages, count: count ?? 0 };
+}
+
+/**
+ * Fetch images for many posts with one query and one signed-URL request,
+ * grouped by post id (newest first within each post)
+ */
+async function getImagesForPosts(
+  postIds: string[]
+): Promise<Map<string, LogPostImage[]>> {
+  const byPost = new Map<string, LogPostImage[]>();
+  if (postIds.length === 0) return byPost;
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("log_post_images")
+    .select("*")
+    .in("log_post_id", postIds)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching log post images:", error);
+    return byPost;
+  }
+
+  const images = (data ?? []) as LogPostImage[];
+  if (images.length === 0) return byPost;
+
+  const { data: signed, error: signError } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrls(
+      images.map((image) => image.storage_path),
+      3600 // 1 hour expiry
+    );
+  if (signError) {
+    console.error("Error signing log post image URLs:", signError);
+  }
+  const urlByPath = new Map(
+    (signed ?? []).map((s) => [s.path, s.signedUrl] as const)
+  );
+
+  for (const image of images) {
+    const list = byPost.get(image.log_post_id) ?? [];
+    list.push({ ...image, url: urlByPath.get(image.storage_path) ?? undefined });
+    byPost.set(image.log_post_id, list);
+  }
+  return byPost;
 }
 
 /**
