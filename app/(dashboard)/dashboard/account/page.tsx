@@ -1,4 +1,5 @@
 import { getUserProfile, requireAuth } from "@/lib/auth/roles";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { AccountForm } from "./account-form";
 
 export default async function AccountPage() {
@@ -10,7 +11,8 @@ export default async function AccountPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div data-flush className="flex min-h-full flex-col">
+      <SettingsNav />
       <AccountForm user={user} />
     </div>
   );

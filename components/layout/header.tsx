@@ -23,7 +23,7 @@ const TITLE_MAP: Record<string, string> = {
   "/dashboard/infrastructure": "Infrastructure",
   "/dashboard/infrastructure/report": "Infrastructure Report",
   "/dashboard/admin/users": "Users",
-  "/dashboard/account": "Account Settings",
+  "/dashboard/account": "Account",
   "/dashboard/notifications": "Notifications",
 };
 
