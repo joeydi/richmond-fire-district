@@ -1,53 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Mail, Pencil } from "lucide-react";
+import { Mail, Plus } from "lucide-react";
 import { sendInviteEmail, type UserActivity } from "@/lib/actions/users";
 import { getLogDateParts } from "@/components/log/log-dates";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Profile, UserRole } from "@/lib/types/database";
-import { CreateUserDialog } from "./create-user-dialog";
+import { formatAgo, NO_ACTIVITY, ROLES, roleDots, roleNotes } from "./user-roles";
 
 interface UsersTableProps {
   users: Profile[];
+  /** Users after the role filter */
+  visible: Profile[];
   activity: Record<string, UserActivity>;
   currentUserId: string;
   /** Request time, so relative times match between server and client */
   now: number;
+  roleFilter: UserRole | "all";
+  onRoleFilter: (role: UserRole | "all") => void;
+  selectedId: string | null;
+  onSelect: (user: Profile) => void;
+  onCreate: () => void;
 }
-
-const ROLES: UserRole[] = ["admin", "editor", "member"];
-
-const roleDots: Record<UserRole, string> = {
-  admin: "bg-red-600",
-  editor: "bg-brand",
-  member: "bg-zinc-400",
-};
-
-const roleNotes: Record<UserRole, string> = {
-  admin: "Full access",
-  editor: "Add / edit data",
-  member: "View only",
-};
-
-const NO_ACTIVITY: UserActivity = { lastSignInAt: null, readings30d: 0, posts30d: 0, lastEntryAt: null };
 
 const thClass =
   "border-b bg-zinc-50 px-2 py-1.5 text-left font-mono text-[10px] font-medium tracking-[0.06em] whitespace-nowrap text-muted-foreground uppercase first:pl-4 last:pr-4";
 const tdClass = "px-2 py-[7px] first:pl-4 last:pr-4";
-
-function formatAgo(iso: string, now: number): string {
-  const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return getLogDateParts(iso).date;
-}
 
 function RoleLabel({ role }: { role: UserRole }) {
   return (
@@ -85,12 +65,21 @@ function Entries({ activity }: { activity: UserActivity }) {
   );
 }
 
-export function UsersTable({ users, activity, currentUserId, now }: UsersTableProps) {
+export function UsersTable({
+  users,
+  visible,
+  activity,
+  currentUserId,
+  now,
+  roleFilter,
+  onRoleFilter,
+  selectedId,
+  onSelect,
+  onCreate,
+}: UsersTableProps) {
   const [sendingInvite, setSendingInvite] = useState<string | null>(null);
-  const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
 
   const counts = Object.fromEntries(ROLES.map((role) => [role, users.filter((u) => u.role === role).length]));
-  const visible = roleFilter === "all" ? users : users.filter((user) => user.role === roleFilter);
   const neverSignedIn = users.filter((user) => !activity[user.id]?.lastSignInAt).length;
 
   const handleSendInvite = async (user: Profile) => {
@@ -115,25 +104,34 @@ export function UsersTable({ users, activity, currentUserId, now }: UsersTablePr
         variant="ghost"
         size="icon"
         className="size-6 text-muted-foreground"
-        onClick={() => handleSendInvite(user)}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleSendInvite(user);
+        }}
         disabled={sendingInvite === user.id}
         title="Send sign-in link"
       >
         <Mail className="size-3" />
         <span className="sr-only">Send sign-in link to {user.email}</span>
       </Button>
-      <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" asChild>
-        <Link href={`/dashboard/admin/users/${user.id}/edit`} title="Edit user">
-          <Pencil className="size-3" />
-          <span className="sr-only">Edit {user.full_name || user.email}</span>
-        </Link>
-      </Button>
     </div>
   );
 
   const name = (user: Profile) => (
     <span className="inline-flex items-center gap-1.5">
-      <span className={cn(!user.full_name && "text-muted-foreground")}>{user.full_name || "No name"}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(user);
+        }}
+        className={cn(
+          "text-left underline-offset-2 outline-none hover:underline focus-visible:underline",
+          !user.full_name && "text-muted-foreground"
+        )}
+      >
+        {user.full_name || "No name"}
+      </button>
       {user.id === currentUserId && (
         <span className="rounded-sm bg-zinc-100 px-1 font-mono text-[9px] tracking-[0.06em] text-zinc-600">YOU</span>
       )}
@@ -150,7 +148,7 @@ export function UsersTable({ users, activity, currentUserId, now }: UsersTablePr
               key={role}
               type="button"
               aria-pressed={roleFilter === role}
-              onClick={() => setRoleFilter(role)}
+              onClick={() => onRoleFilter(role)}
               className={cn(
                 "flex h-6 items-center gap-1 rounded-sm px-2 uppercase",
                 roleFilter === role
@@ -170,7 +168,10 @@ export function UsersTable({ users, activity, currentUserId, now }: UsersTablePr
             {neverSignedIn} NEVER SIGNED IN
           </span>
         )}
-        <CreateUserDialog />
+        <Button size="sm" className="h-7 px-2.5 text-xs" onClick={onCreate}>
+          <Plus className="size-3.5" />
+          User
+        </Button>
       </div>
 
       {visible.length === 0 ? (
@@ -182,7 +183,14 @@ export function UsersTable({ users, activity, currentUserId, now }: UsersTablePr
             {visible.map((user) => {
               const userActivity = activity[user.id] ?? NO_ACTIVITY;
               return (
-                <li key={user.id} className="flex items-start gap-3 border-b border-zinc-100 px-4 py-2.5">
+                <li
+                  key={user.id}
+                  data-user-id={user.id}
+                  className={cn(
+                    "flex items-start gap-3 border-b border-zinc-100 px-4 py-2.5",
+                    user.id === selectedId && "bg-brand/10"
+                  )}
+                >
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <div className="flex items-center gap-2 text-[13px] font-medium">
                       {name(user)}
@@ -227,10 +235,22 @@ export function UsersTable({ users, activity, currentUserId, now }: UsersTablePr
                 {visible.map((user) => {
                   const userActivity = activity[user.id] ?? NO_ACTIVITY;
                   return (
-                    <tr key={user.id} className="group border-b border-zinc-100 transition-colors hover:bg-zinc-50/70">
+                    <tr
+                      key={user.id}
+                      data-user-id={user.id}
+                      aria-selected={user.id === selectedId}
+                      onClick={() => onSelect(user)}
+                      className={cn(
+                        "group cursor-pointer border-b border-zinc-100 transition-colors",
+                        user.id === selectedId ? "bg-brand/10" : "hover:bg-zinc-50/70"
+                      )}
+                    >
                       <td className={cn(tdClass, "font-medium whitespace-nowrap")}>{name(user)}</td>
                       <td className={cn(tdClass, "max-w-[240px] truncate font-mono text-zinc-700")}>
-                        <a href={`mailto:${user.email}`} className="underline-offset-2 hover:text-foreground hover:underline">
+                        <a
+                          href={`mailto:${user.email}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="underline-offset-2 hover:text-foreground hover:underline">
                           {user.email}
                         </a>
                       </td>

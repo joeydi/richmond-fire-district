@@ -40,9 +40,6 @@ function getPageTitle(pathname: string): string {
   if (/^\/dashboard\/log\/[^/]+$/.test(pathname)) {
     return "View Post";
   }
-  if (/^\/dashboard\/admin\/users\/[^/]+\/edit$/.test(pathname)) {
-    return "Edit User";
-  }
   return "";
 }
 

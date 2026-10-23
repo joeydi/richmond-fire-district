@@ -131,7 +131,7 @@ export async function createUser(
   email: string,
   name: string,
   role: UserRole = "member"
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; id?: string }> {
   await requireAdmin();
 
   const adminClient = createAdminClient();
@@ -153,7 +153,7 @@ export async function createUser(
   }
 
   revalidatePath("/dashboard/admin/users");
-  return { success: true };
+  return { success: true, id: data.user?.id };
 }
 
 export async function sendInviteEmail(

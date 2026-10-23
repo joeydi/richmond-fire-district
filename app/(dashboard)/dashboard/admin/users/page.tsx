@@ -1,13 +1,25 @@
 import { cache } from "react";
 import { requireAdmin } from "@/lib/auth/roles";
 import { getUserActivity, getUsers } from "@/lib/actions/users";
-import { UsersTable } from "./users-table";
+import { UsersView } from "./users-view";
 
 const getRequestTime = cache(() => Date.now());
 
-export default async function UsersPage() {
-  const admin = await requireAdmin();
-  const [users, activity] = await Promise.all([getUsers(), getUserActivity()]);
+interface UsersPageProps {
+  searchParams: Promise<{ user?: string }>;
+}
 
-  return <UsersTable users={users} activity={activity} currentUserId={admin.id} now={getRequestTime()} />;
+export default async function UsersPage({ searchParams }: UsersPageProps) {
+  const admin = await requireAdmin();
+  const [{ user }, users, activity] = await Promise.all([searchParams, getUsers(), getUserActivity()]);
+
+  return (
+    <UsersView
+      users={users}
+      activity={activity}
+      currentUserId={admin.id}
+      now={getRequestTime()}
+      initialSelected={user ?? null}
+    />
+  );
 }
