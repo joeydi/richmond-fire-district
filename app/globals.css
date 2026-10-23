@@ -196,7 +196,7 @@
 }
 .console-editor .mdxeditor-toolbar {
   position: sticky;
-  top: var(--editor-sticky-top, 0);
+  top: 0;
   z-index: 1;
   /* Wraps rather than scrolling sideways on phones */
   flex-wrap: wrap;
@@ -225,6 +225,5 @@
   font-size: 14px;
 }
 .console-editor .mdxeditor-root-contenteditable [contenteditable] {
-  max-width: 800px;
-  min-height: 240px;
+  min-height: 140px;
 }

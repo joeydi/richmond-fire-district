@@ -16,7 +16,7 @@ interface JumpTarget {
 
 const ACTIONS: JumpTarget[] = [
   { name: "New reading", href: "/dashboard/readings", icon: Plus },
-  { name: "New log post", href: "/dashboard/log/new", icon: Plus },
+  { name: "New log post", href: "/dashboard/log?compose=new", icon: Plus },
   { name: "New contact", href: "/dashboard/contacts?contact=new", icon: Plus },
   { name: "Infrastructure report", href: "/dashboard/infrastructure/report", icon: Plus },
 ];

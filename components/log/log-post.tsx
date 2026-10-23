@@ -25,6 +25,8 @@ interface LogPostProps {
   canDelete?: boolean;
   onDeleted?: () => void;
   showPermalink?: boolean;
+  /** Opens the log page's edit sheet in place; without it the button links there */
+  onEdit?: () => void;
   className?: string;
 }
 
@@ -34,6 +36,7 @@ export function LogPost({
   canDelete = false,
   onDeleted,
   showPermalink = true,
+  onEdit,
   className,
 }: LogPostProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -102,14 +105,20 @@ export function LogPost({
               <span className="sr-only">Copy link to post</span>
             </Button>
           )}
-          {canEdit && (
-            <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" asChild>
-              <Link href={`/dashboard/log/${post.id}/edit`} title="Edit post">
+          {canEdit &&
+            (onEdit ? (
+              <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" onClick={onEdit} title="Edit post">
                 <Pencil className="size-3.5" />
                 <span className="sr-only">Edit post</span>
-              </Link>
-            </Button>
-          )}
+              </Button>
+            ) : (
+              <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" asChild>
+                <Link href={`/dashboard/log?compose=${post.id}`} title="Edit post">
+                  <Pencil className="size-3.5" />
+                  <span className="sr-only">Edit post</span>
+                </Link>
+              </Button>
+            ))}
           {canDelete && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

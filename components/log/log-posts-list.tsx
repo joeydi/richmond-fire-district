@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -14,8 +13,10 @@ import {
 import { Search, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogPost } from "./log-post";
+import { LogPostForm } from "./log-post-form";
 import { getLogDateParts } from "./log-dates";
-import type { LogPostIndex, LogPostWithImages } from "@/lib/types/log";
+import { NEW_POST, type LogPostIndex, type LogPostWithImages } from "@/lib/types/log";
+import type { Profile } from "@/lib/types/database";
 
 const ALL_AUTHORS = "all";
 const MAX_TICKS = 12;
@@ -32,6 +33,11 @@ interface LogPostsListProps {
   currentUserId: string;
   isAdmin: boolean;
   canCreate: boolean;
+  /** For the composer's author picker; admins only */
+  users?: Profile[];
+  currentUserName: string;
+  /** The post named by `?compose=`, fetched in case it isn't on this page */
+  composePost: LogPostWithImages | null;
 }
 
 interface MonthGroup {
@@ -45,6 +51,20 @@ interface IndexMonth {
   label: string;
   count: number;
   page: number;
+}
+
+/** The current URL with `?compose=` set to `value`, or removed */
+function composeUrl(value: string | null): string {
+  const url = new URL(window.location.href);
+  if (value) url.searchParams.set("compose", value);
+  else url.searchParams.delete("compose");
+  return url.pathname + url.search + url.hash;
+}
+
+/** Opening needs nothing from the server, so replaceState skips the round trip */
+function setComposeParam(value: string | null) {
+  // null state: Next only syncs useSearchParams for calls without its own history state
+  window.history.replaceState(null, "", composeUrl(value));
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -64,12 +84,80 @@ export function LogPostsList({
   currentUserId,
   isAdmin,
   canCreate,
+  users,
+  currentUserName,
+  composePost,
 }: LogPostsListProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(initialSearch);
   const [activeMonth, setActiveMonth] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  // Writing and editing happen in a side sheet beside the feed. `?compose=` is the source
+  // of truth, so links, redirects and the jump dialog open it as well as the buttons here.
+  const compose = useSearchParams().get("compose");
+  // Hides the sheet right away while a close that refetches the feed is in flight
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const [prevCompose, setPrevCompose] = useState(compose);
+  if (compose !== prevCompose) {
+    setPrevCompose(compose);
+    setDismissed(null);
+  }
+  // Scrolled to and flashed once it shows up in the refreshed feed
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const editingPost =
+    compose && compose !== NEW_POST
+      ? (posts.find((p) => p.id === compose) ?? (composePost?.id === compose ? composePost : undefined))
+      : undefined;
+  const canEditPost = (post: LogPostWithImages) => isAdmin || post.author_id === currentUserId;
+  const sheetOpen =
+    compose !== dismissed &&
+    ((compose === NEW_POST && canCreate) || (!!editingPost && canEditPost(editingPost)));
+
+  // Changes that need fresh posts go through the router: a refresh after replaceState
+  // would refetch the old URL and put ?compose= back
+  const replaceAndRefetch = (value: string | null) => {
+    startTransition(() => {
+      router.replace(composeUrl(value), { scroll: false });
+    });
+  };
+
+  const openCompose = (value: string) => {
+    setDismissed(null);
+    setComposeParam(value);
+  };
+
+  const closeCompose = () => {
+    if (compose === NEW_POST) {
+      setComposeParam(null);
+      return;
+    }
+    // Photos on an edited post save as they upload, so the feed may be stale
+    setDismissed(compose);
+    replaceAndRefetch(null);
+  };
+
+  const handleSaved = (id: string, options?: { retryPhotos?: boolean }) => {
+    setSavedId(id);
+    if (options?.retryPhotos) {
+      // The new post reopens for editing once the refetched feed has it
+      replaceAndRefetch(id);
+    } else {
+      setDismissed(compose);
+      replaceAndRefetch(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!savedId) return;
+    const el = document.getElementById(savedId);
+    if (!el) return;
+    el.scrollIntoView({ block: "nearest" });
+    const timer = setTimeout(() => setSavedId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [savedId, posts]);
 
   const totalPages = Math.ceil(totalCount / pageSize);
   const hasFilters = Boolean(initialSearch || authorId || hasPhotos);
@@ -122,15 +210,15 @@ export function LogPostsList({
       if (e.key === "/") {
         e.preventDefault();
         searchRef.current?.focus();
-      } else if (e.key === "c" && canCreate && Date.now() - lastG > 1000) {
+      } else if (e.key === "c" && canCreate && !sheetOpen && Date.now() - lastG > 1000) {
         e.preventDefault();
-        router.push("/dashboard/log/new");
+        openCompose(NEW_POST);
       }
       lastG = e.key === "g" ? Date.now() : 0;
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [canCreate, router]);
+  }, [canCreate, sheetOpen]);
 
   // Highlight the month currently at the top of the feed
   useEffect(() => {
@@ -150,7 +238,7 @@ export function LogPostsList({
         const topmost = [...visible].sort((a, b) => a[1] - b[1])[0];
         if (topmost) setActiveMonth(topmost[0]);
       },
-      { root: document.querySelector("main"), rootMargin: "-45px 0px -50% 0px" }
+      { root: feedRef.current, rootMargin: "-45px 0px -50% 0px" }
     );
     sections.forEach((section) => observer.observe(section));
     return () => observer.disconnect();
@@ -159,6 +247,7 @@ export function LogPostsList({
   const buildUrl = (params: Record<string, string | number>) => {
     const url = new URL(window.location.href);
     url.hash = "";
+    url.searchParams.delete("compose");
     Object.entries(params).forEach(([key, value]) => {
       if (value) {
         url.searchParams.set(key, String(value));
@@ -195,214 +284,243 @@ export function LogPostsList({
       : `${buildUrl({ page: month.page })}#m-${month.key}`;
 
   return (
-    <div data-flush className="flex min-h-full flex-col">
-      {/* Toolbar */}
-      <div className="z-20 flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2 lg:sticky lg:top-0">
-        <form onSubmit={handleSearch} className="flex w-full sm:w-72">
-          <label className="flex h-7 flex-1 items-center gap-2 rounded-md border px-2 focus-within:border-ring">
-            <Search className="size-3.5 text-muted-foreground" />
-            <span className="sr-only">Search posts</span>
-            <input
-              ref={searchRef}
-              type="search"
-              placeholder="Search posts"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            />
-            <kbd className="hidden sm:inline-flex">/</kbd>
-          </label>
-        </form>
+    <div data-flush className="flex h-full">
+      <div ref={feedRef} className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        {/* Toolbar */}
+        <div className="z-20 flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2 lg:sticky lg:top-0">
+          <form onSubmit={handleSearch} className="flex w-full sm:w-72">
+            <label className="flex h-7 flex-1 items-center gap-2 rounded-md border px-2 focus-within:border-ring">
+              <Search className="size-3.5 text-muted-foreground" />
+              <span className="sr-only">Search posts</span>
+              <input
+                ref={searchRef}
+                type="search"
+                placeholder="Search posts"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              />
+              <kbd className="hidden sm:inline-flex">/</kbd>
+            </label>
+          </form>
 
-        <Select
-          value={authorId || ALL_AUTHORS}
-          onValueChange={(value) =>
-            updateUrl({ author: value === ALL_AUTHORS ? "" : value, page: 1 })
-          }
-        >
-          <SelectTrigger size="sm" className="!h-7 px-2 text-xs" aria-label="Author">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_AUTHORS}>All authors</SelectItem>
-            {index.authors.map((author) => (
-              <SelectItem key={author.id} value={author.id}>
-                {author.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <Select
+            value={authorId || ALL_AUTHORS}
+            onValueChange={(value) =>
+              updateUrl({ author: value === ALL_AUTHORS ? "" : value, page: 1 })
+            }
+          >
+            <SelectTrigger size="sm" className="!h-7 px-2 text-xs" aria-label="Author">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_AUTHORS}>All authors</SelectItem>
+              {index.authors.map((author) => (
+                <SelectItem key={author.id} value={author.id}>
+                  {author.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          aria-pressed={hasPhotos}
-          onClick={() => updateUrl({ photos: hasPhotos ? "" : "1", page: 1 })}
-          className={cn(
-            "h-7 px-2 font-mono text-[11px] tracking-wide",
-            hasPhotos && "border-brand bg-brand/10 text-foreground hover:bg-brand/15"
-          )}
-        >
-          HAS PHOTOS
-        </Button>
-
-        {hasFilters && (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={clearFilters}
-            className="h-7 px-2 text-xs text-muted-foreground"
+            aria-pressed={hasPhotos}
+            onClick={() => updateUrl({ photos: hasPhotos ? "" : "1", page: 1 })}
+            className={cn(
+              "h-7 px-2 font-mono text-[11px] tracking-wide",
+              hasPhotos && "border-brand bg-brand/10 text-foreground hover:bg-brand/15"
+            )}
           >
-            <X className="size-3.5" />
-            Clear
+            HAS PHOTOS
           </Button>
-        )}
 
-        <div className="flex-1" />
-
-        <span
-          className={cn(
-            "font-mono text-[11px] text-muted-foreground transition-opacity",
-            isPending && "opacity-50"
+          {hasFilters && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="h-7 px-2 text-xs text-muted-foreground"
+            >
+              <X className="size-3.5" />
+              Clear
+            </Button>
           )}
-        >
-          {totalCount} {totalCount === 1 ? "POST" : "POSTS"}
-        </span>
 
-        {canCreate && (
-          <Button size="sm" className="h-7 px-2.5 text-xs" asChild>
-            <Link href="/dashboard/log/new">
+          <div className="flex-1" />
+
+          <span
+            className={cn(
+              "font-mono text-[11px] text-muted-foreground transition-opacity",
+              isPending && "opacity-50"
+            )}
+          >
+            {totalCount} {totalCount === 1 ? "POST" : "POSTS"}
+          </span>
+
+          {canCreate && (
+            <Button size="sm" className="h-7 px-2.5 text-xs" onClick={() => openCompose(NEW_POST)}>
               <Plus className="size-3.5" />
               New post <kbd className="ml-0.5 hidden border-white/30 text-white/70 sm:inline-flex">C</kbd>
-            </Link>
-          </Button>
-        )}
-      </div>
-
-      <div className="flex flex-1">
-        {/* Month navigator */}
-        {years.length > 0 && (
-          <nav
-            aria-label="Jump to month"
-            className="sticky top-[45px] hidden h-[calc(100dvh-89px)] w-40 shrink-0 self-start overflow-y-auto border-r px-2 py-3 lg:block"
-          >
-            <div className="flex flex-col gap-2.5">
-              {years.map((y) => (
-                <div key={y.year} className="flex flex-col gap-px">
-                  <span className="px-2 pb-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
-                    {y.year}
-                  </span>
-                  {y.months.map((month) => {
-                    const isActive = month.key === activeMonth;
-                    return (
-                      <a
-                        key={month.key}
-                        href={monthHref(month)}
-                        aria-current={isActive ? "true" : undefined}
-                        className={cn(
-                          "flex h-6 items-center gap-2 rounded-md px-2 font-mono text-[11px] uppercase transition-colors",
-                          isActive
-                            ? "bg-accent text-foreground"
-                            : "text-zinc-700 hover:bg-accent/60"
-                        )}
-                      >
-                        <span className="w-7">{month.label}</span>
-                        <span className="flex flex-1 gap-0.5" aria-hidden="true">
-                          {Array.from({ length: Math.min(month.count, MAX_TICKS) }, (_, i) => (
-                            <span
-                              key={i}
-                              className={cn(
-                                "h-2.5 w-[3px]",
-                                isActive ? "bg-brand" : "bg-zinc-300"
-                              )}
-                            />
-                          ))}
-                        </span>
-                        <span className="text-muted-foreground">{month.count}</span>
-                      </a>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </nav>
-        )}
-
-        {/* Feed */}
-        <div className="min-w-0 flex-1">
-          {posts.length === 0 ? (
-            <div className="flex flex-col items-center gap-1 px-4 py-16 text-center">
-              <p className="text-sm font-medium">
-                {hasFilters ? "No posts match these filters" : "No posts yet"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {hasFilters
-                  ? "Try a different search or clear the filters."
-                  : "Create the first post to start the log."}
-              </p>
-            </div>
-          ) : (
-            groups.map((group) => (
-              <section
-                key={group.key}
-                id={`m-${group.key}`}
-                data-month={group.key}
-                aria-labelledby={`m-${group.key}-label`}
-                className="scroll-mt-0 lg:scroll-mt-[45px]"
-              >
-                <h2
-                  id={`m-${group.key}-label`}
-                  className="z-10 flex gap-2.5 border-b bg-zinc-50 px-4 py-1.5 font-mono text-[10px] font-normal tracking-[0.08em] text-zinc-600 uppercase lg:sticky lg:top-[45px] lg:px-5"
-                >
-                  {group.label}
-                  <span className="text-muted-foreground">{group.posts.length}</span>
-                </h2>
-                {group.posts.map((post) => (
-                  <LogPost
-                    key={post.id}
-                    post={post}
-                    canEdit={isAdmin || post.author_id === currentUserId}
-                    canDelete={isAdmin}
-                    onDeleted={handlePostDeleted}
-                  />
-                ))}
-              </section>
-            ))
-          )}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex h-10 items-center gap-3 border-t px-4 font-mono text-[11px] text-muted-foreground lg:px-5">
-              <span className="flex-1">
-                {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} OF{" "}
-                {totalCount}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-7"
-                onClick={() => updateUrl({ page: currentPage - 1 })}
-                disabled={currentPage <= 1 || isPending}
-              >
-                <ChevronLeft className="size-4" />
-                <span className="sr-only">Previous page</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-7"
-                onClick={() => updateUrl({ page: currentPage + 1 })}
-                disabled={currentPage >= totalPages || isPending}
-              >
-                <ChevronRight className="size-4" />
-                <span className="sr-only">Next page</span>
-              </Button>
-            </div>
+            </Button>
           )}
         </div>
+
+        <div className="flex flex-1">
+          {/* Month navigator */}
+          {years.length > 0 && (
+            <nav
+              aria-label="Jump to month"
+              className="sticky top-[45px] hidden h-[calc(100dvh-89px)] w-40 shrink-0 self-start overflow-y-auto border-r px-2 py-3 lg:block"
+            >
+              <div className="flex flex-col gap-2.5">
+                {years.map((y) => (
+                  <div key={y.year} className="flex flex-col gap-px">
+                    <span className="px-2 pb-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
+                      {y.year}
+                    </span>
+                    {y.months.map((month) => {
+                      const isActive = month.key === activeMonth;
+                      return (
+                        <a
+                          key={month.key}
+                          href={monthHref(month)}
+                          aria-current={isActive ? "true" : undefined}
+                          className={cn(
+                            "flex h-6 items-center gap-2 rounded-md px-2 font-mono text-[11px] uppercase transition-colors",
+                            isActive
+                              ? "bg-accent text-foreground"
+                              : "text-zinc-700 hover:bg-accent/60"
+                          )}
+                        >
+                          <span className="w-7">{month.label}</span>
+                          <span className="flex flex-1 gap-0.5" aria-hidden="true">
+                            {Array.from({ length: Math.min(month.count, MAX_TICKS) }, (_, i) => (
+                              <span
+                                key={i}
+                                className={cn(
+                                  "h-2.5 w-[3px]",
+                                  isActive ? "bg-brand" : "bg-zinc-300"
+                                )}
+                              />
+                            ))}
+                          </span>
+                          <span className="text-muted-foreground">{month.count}</span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </nav>
+          )}
+
+          {/* Feed */}
+          <div className="min-w-0 flex-1">
+            {posts.length === 0 ? (
+              <div className="flex flex-col items-center gap-1 px-4 py-16 text-center">
+                <p className="text-sm font-medium">
+                  {hasFilters ? "No posts match these filters" : "No posts yet"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {hasFilters
+                    ? "Try a different search or clear the filters."
+                    : "Create the first post to start the log."}
+                </p>
+              </div>
+            ) : (
+              groups.map((group) => (
+                <section
+                  key={group.key}
+                  id={`m-${group.key}`}
+                  data-month={group.key}
+                  aria-labelledby={`m-${group.key}-label`}
+                  className="scroll-mt-0 lg:scroll-mt-[45px]"
+                >
+                  <h2
+                    id={`m-${group.key}-label`}
+                    className="z-10 flex gap-2.5 border-b bg-zinc-50 px-4 py-1.5 font-mono text-[10px] font-normal tracking-[0.08em] text-zinc-600 uppercase lg:sticky lg:top-[45px] lg:px-5"
+                  >
+                    {group.label}
+                    <span className="text-muted-foreground">{group.posts.length}</span>
+                  </h2>
+                  {group.posts.map((post) => (
+                    <LogPost
+                      key={post.id}
+                      post={post}
+                      canEdit={canEditPost(post)}
+                      canDelete={isAdmin}
+                      onDeleted={handlePostDeleted}
+                      onEdit={() => openCompose(post.id)}
+                      className={cn(
+                        post.id === compose && "bg-brand/5 hover:bg-brand/5",
+                        post.id === savedId && "bg-amber-50 transition-colors duration-700"
+                      )}
+                    />
+                  ))}
+                </section>
+              ))
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex h-10 items-center gap-3 border-t px-4 font-mono text-[11px] text-muted-foreground lg:px-5">
+                <span className="flex-1">
+                  {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} OF{" "}
+                  {totalCount}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => updateUrl({ page: currentPage - 1 })}
+                  disabled={currentPage <= 1 || isPending}
+                >
+                  <ChevronLeft className="size-4" />
+                  <span className="sr-only">Previous page</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => updateUrl({ page: currentPage + 1 })}
+                  disabled={currentPage >= totalPages || isPending}
+                >
+                  <ChevronRight className="size-4" />
+                  <span className="sr-only">Next page</span>
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {sheetOpen && (
+        <>
+          {/* Below lg the sheet overlays the feed */}
+          <div aria-hidden="true" className="fixed inset-0 z-30 bg-zinc-950/20 lg:hidden" />
+          <div
+            className={cn(
+              "fixed inset-y-0 right-0 z-40 w-full max-w-[420px] border-l shadow-lg",
+              "lg:static lg:z-auto lg:w-[400px] lg:max-w-none lg:shrink-0 lg:shadow-[-8px_0_24px_-16px_rgb(24_24_27/0.18)]"
+            )}
+          >
+            <LogPostForm
+              key={compose}
+              post={editingPost}
+              users={users}
+              isAdmin={isAdmin}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              onClose={closeCompose}
+              onSaved={handleSaved}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

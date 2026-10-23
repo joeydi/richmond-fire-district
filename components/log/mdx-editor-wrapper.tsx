@@ -40,6 +40,8 @@ interface LogContentEditorProps {
   onChange: (value: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  /** Drops the heading picker so the toolbar fits a narrow sheet on one row */
+  compact?: boolean;
   className?: string;
 }
 
@@ -48,6 +50,7 @@ export function LogContentEditor({
   onChange,
   placeholder = "Write your update here...",
   autoFocus,
+  compact = false,
   className,
 }: LogContentEditorProps) {
   return (
@@ -74,8 +77,12 @@ export function LogContentEditor({
                 <Separator />
                 <ListsToggle />
                 <Separator />
-                <BlockTypeSelect />
-                <Separator />
+                {!compact && (
+                  <>
+                    <BlockTypeSelect />
+                    <Separator />
+                  </>
+                )}
                 <CreateLink />
               </>
             ),

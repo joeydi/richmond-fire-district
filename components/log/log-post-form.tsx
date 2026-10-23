@@ -1,19 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { ImagePlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { getErrorMessage, isLikelyHeic, processImageForUpload } from "@/lib/image-processing";
 import { LogContentEditor } from "./mdx-editor-wrapper";
@@ -34,6 +27,9 @@ interface LogPostFormProps {
   currentUserId: string;
   /** Shown as the author when the author can't be changed */
   currentUserName: string;
+  onClose: () => void;
+  /** Called with the saved post's id; `retryPhotos` when some queued photos didn't upload */
+  onSaved: (id: string, options?: { retryPhotos?: boolean }) => void;
 }
 
 interface PendingPhoto {
@@ -41,6 +37,17 @@ interface PendingPhoto {
   file: File;
   /** Object URL for the thumbnail; HEIC has none since browsers can't show it */
   preview: string | null;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
+function isPopoverOpen(): boolean {
+  return !!document.querySelector(
+    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"], [role="listbox"]'
+  );
 }
 
 function nowInputValue() {
@@ -126,9 +133,16 @@ function PendingPhotos({
   );
 }
 
-/** Composer for new and edited log posts */
-export function LogPostForm({ post, users, isAdmin = false, currentUserId, currentUserName }: LogPostFormProps) {
-  const router = useRouter();
+/** Composer for new and edited log posts, shown in the log page's side sheet */
+export function LogPostForm({
+  post,
+  users,
+  isAdmin = false,
+  currentUserId,
+  currentUserName,
+  onClose,
+  onSaved,
+}: LogPostFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
   const [status, setStatus] = useState<string | null>(null);
@@ -146,7 +160,6 @@ export function LogPostForm({ post, users, isAdmin = false, currentUserId, curre
     : content.trim() !== "" || photos.length > 0;
   const authorOptions = isAdmin ? (users ?? []) : [];
   const canChangeAuthor = authorOptions.length > 0;
-  const backHref = post ? `/dashboard/log#${post.id}` : "/dashboard/log";
 
   // Warn before closing the tab on unsaved work
   useEffect(() => {
@@ -182,7 +195,7 @@ export function LogPostForm({ post, users, isAdmin = false, currentUserId, curre
 
   const cancel = () => {
     if (isDirty && !window.confirm("Discard your changes to this post?")) return;
-    router.push(backHref);
+    onClose();
   };
 
   /** Uploads queued photos to a new post; returns how many failed */
@@ -213,20 +226,23 @@ export function LogPostForm({ post, users, isAdmin = false, currentUserId, curre
 
     startTransition(async () => {
       // An untouched date keeps the original timestamp, seconds and all
-      const created_at =
-        isEditing && postDate === initialDate ? post.created_at : fromDistrictInputValue(postDate);
+      const created_at = isEditing && postDate === initialDate ? post.created_at : fromDistrictInputValue(postDate);
       const author_id = canChangeAuthor && authorId !== initialAuthor ? authorId : undefined;
 
       if (isEditing) {
         setStatus("SAVING…");
-        const result = await updateLogPost(post.id, { content, created_at, author_id });
+        const result = await updateLogPost(post.id, {
+          content,
+          created_at,
+          author_id,
+        });
         setStatus(null);
         if (!result.success) {
           toast.error(result.error || "Could not save post");
           return;
         }
         toast.success("Post updated");
-        router.push(backHref);
+        onSaved(post.id);
         return;
       }
 
@@ -240,13 +256,13 @@ export function LogPostForm({ post, users, isAdmin = false, currentUserId, curre
       const failed = await uploadPhotos(result.id);
       setStatus(null);
       if (failed > 0) {
-        // The post exists; finish the photos from its edit page
+        // The post exists; reopen it so the photos can be retried
         toast.warning(`Posted, but ${failed} ${failed === 1 ? "photo" : "photos"} didn't upload`);
-        router.push(`/dashboard/log/${result.id}/edit`);
+        onSaved(result.id, { retryPhotos: true });
         return;
       }
       toast.success("Posted");
-      router.push(`/dashboard/log#${result.id}`);
+      onSaved(result.id);
     });
   };
 
@@ -262,113 +278,159 @@ export function LogPostForm({ post, users, isAdmin = false, currentUserId, curre
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Esc closes the sheet, unless it's meant for a field, menu or dialog
+  const cancelRef = useRef(cancel);
+  useEffect(() => {
+    cancelRef.current = cancel;
+  });
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || isTypingTarget(e.target) || isPopoverOpen()) return;
+      cancelRef.current();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const submitLabel = isEditing ? "Save changes" : "Post";
+  const label = status ?? (isEditing ? "EDITING POST" : "NEW POST");
+
+  const submitButton = (
+    <Button
+      type="submit"
+      size="sm"
+      className="h-7 px-2.5 text-xs"
+      disabled={isPending || (isEditing ? !isDirty : !content.trim())}
+    >
+      {isPending ? (isEditing ? "Saving…" : "Posting…") : submitLabel}
+    </Button>
+  );
+  const cancelButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-7 px-2.5 text-xs"
+      onClick={cancel}
+      disabled={isPending}
+    >
+      Cancel
+    </Button>
+  );
+  const shortcutHint = (
+    <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">
+      ⌘↵ TO {isEditing ? "SAVE" : "POST"}
+    </span>
+  );
+
+  const details = (
+    <>
+      <div className="flex flex-col gap-1.5 px-4 py-3">
+        <div className="flex items-center">
+          <Label htmlFor="post-date" className={cn(labelClass, "flex-1")}>
+            Date &amp; time
+          </Label>
+          <button
+            type="button"
+            onClick={() => setPostDate(nowInputValue())}
+            className="font-mono text-[10px] tracking-[0.04em] text-muted-foreground hover:text-foreground"
+          >
+            NOW
+          </button>
+        </div>
+        <Input
+          id="post-date"
+          type="datetime-local"
+          required
+          value={postDate}
+          onChange={(e) => setPostDate(e.target.value)}
+          className="h-8 font-mono text-[13px]"
+        />
+        <p className="text-xs text-muted-foreground">Eastern time. Backdate to log something that already happened.</p>
+      </div>
+
+      <div className="flex flex-col gap-1.5 border-t border-zinc-100 px-4 py-3">
+        <Label htmlFor="post-author" className={labelClass}>
+          Author
+        </Label>
+        {canChangeAuthor ? (
+          <Select value={authorId} onValueChange={setAuthorId}>
+            <SelectTrigger id="post-author" size="sm" className="!h-8 w-full px-2 text-[13px]">
+              <SelectValue placeholder="Select author" />
+            </SelectTrigger>
+            <SelectContent>
+              {authorOptions.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.full_name || user.email}
+                  {user.id === currentUserId && <span className="text-muted-foreground"> (you)</span>}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <p id="post-author" className="text-[13px]">
+            {post?.author?.full_name || post?.author?.email || currentUserName}
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-zinc-100 px-4 py-3">
+        <span className={labelClass}>Photos</span>
+        {isEditing ? (
+          <LogPostImages logPostId={post.id} canEdit />
+        ) : (
+          <PendingPhotos
+            photos={photos}
+            onAdd={addPhotos}
+            onRemove={(key) => setPhotos((current) => current.filter((p) => p.key !== key))}
+            disabled={isPending}
+          />
+        )}
+        {isEditing && <p className="text-xs text-muted-foreground">Photos save as soon as they upload.</p>}
+      </div>
+    </>
+  );
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} data-flush className="flex min-h-full flex-col lg:h-full">
-      {/* Toolbar */}
-      <div className="sticky top-0 z-20 flex h-11 shrink-0 items-center gap-2 border-b bg-background px-4">
-        <span className="flex-1 truncate font-mono text-[11px] tracking-[0.06em] text-muted-foreground">
-          {status ?? (isEditing ? "EDITING POST" : "NEW POST")}
-        </span>
-        <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">⌘↵ TO {isEditing ? "SAVE" : "POST"}</span>
-        <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={cancel} disabled={isPending}>
-          Cancel
-        </Button>
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      aria-label={isEditing ? "Edit post" : "New post"}
+      className="flex h-full w-full flex-col bg-background"
+    >
+      <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2 pl-4">
+        <span className="flex-1 truncate font-mono text-[11px] tracking-[0.06em] text-muted-foreground">{label}</span>
         <Button
-          type="submit"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          disabled={isPending || (isEditing ? !isDirty : !content.trim())}
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7 text-muted-foreground"
+          onClick={cancel}
+          disabled={isPending}
+          title="Close"
         >
-          {isPending ? (isEditing ? "Saving…" : "Posting…") : submitLabel}
+          <X className="size-4" />
+          <span className="sr-only">Close</span>
         </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        {/* Writing area */}
-        <div className="flex min-w-0 flex-1 flex-col lg:overflow-y-auto">
-          <LogContentEditor
-            value={content}
-            onChange={setContent}
-            autoFocus={!isEditing}
-            placeholder="What happened on the water system?"
-            // Below lg the page scrolls, so the editor's toolbar sticks under the composer's
-            className="[--editor-sticky-top:44px] lg:[--editor-sticky-top:0px]"
-          />
-        </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <LogContentEditor
+          value={content}
+          onChange={setContent}
+          autoFocus={!isEditing}
+          placeholder="What happened on the water system?"
+          compact
+          className="border-b"
+        />
+        {details}
+      </div>
 
-        {/* Details rail */}
-        <aside
-          aria-label="Post details"
-          className="flex shrink-0 flex-col border-t lg:w-[300px] lg:overflow-y-auto lg:border-t-0 lg:border-l"
-        >
-          <div className="flex flex-col gap-1.5 px-4 py-3">
-            <div className="flex items-center">
-              <Label htmlFor="post-date" className={cn(labelClass, "flex-1")}>
-                Date &amp; time
-              </Label>
-              <button
-                type="button"
-                onClick={() => setPostDate(nowInputValue())}
-                className="font-mono text-[10px] tracking-[0.04em] text-muted-foreground hover:text-foreground"
-              >
-                NOW
-              </button>
-            </div>
-            <Input
-              id="post-date"
-              type="datetime-local"
-              required
-              value={postDate}
-              onChange={(e) => setPostDate(e.target.value)}
-              className="h-8 font-mono text-[13px]"
-            />
-            <p className="text-xs text-muted-foreground">Eastern time. Backdate to log something that already happened.</p>
-          </div>
-
-          <div className="flex flex-col gap-1.5 border-t border-zinc-100 px-4 py-3">
-            <Label htmlFor="post-author" className={labelClass}>
-              Author
-            </Label>
-            {canChangeAuthor ? (
-              <Select value={authorId} onValueChange={setAuthorId}>
-                <SelectTrigger id="post-author" size="sm" className="!h-8 w-full px-2 text-[13px]">
-                  <SelectValue placeholder="Select author" />
-                </SelectTrigger>
-                <SelectContent>
-                  {authorOptions.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.full_name || user.email}
-                      {user.id === currentUserId && <span className="text-muted-foreground"> (you)</span>}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <p id="post-author" className="text-[13px]">
-                {post?.author?.full_name || post?.author?.email || currentUserName}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 border-t border-zinc-100 px-4 py-3">
-            <span className={labelClass}>Photos</span>
-            {isEditing ? (
-              <LogPostImages logPostId={post.id} canEdit />
-            ) : (
-              <PendingPhotos
-                photos={photos}
-                onAdd={addPhotos}
-                onRemove={(key) => setPhotos((current) => current.filter((p) => p.key !== key))}
-                disabled={isPending}
-              />
-            )}
-            {isEditing && (
-              <p className="text-xs text-muted-foreground">Photos save as soon as they upload.</p>
-            )}
-          </div>
-        </aside>
+      <div className="flex shrink-0 items-center gap-2 border-t px-4 py-3">
+        {submitButton}
+        {cancelButton}
+        <span className="flex-1" />
+        {shortcutHint}
       </div>
     </form>
   );

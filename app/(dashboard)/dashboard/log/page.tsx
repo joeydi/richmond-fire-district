@@ -1,6 +1,10 @@
-import { getLogPostIndex, getLogPosts } from "@/lib/actions/log";
+import { getLogPost, getLogPostIndex, getLogPosts } from "@/lib/actions/log";
 import { getUserProfile, isAdmin, canEdit } from "@/lib/auth/roles";
+import { getUsers } from "@/lib/actions/users";
 import { LogPostsList } from "@/components/log/log-posts-list";
+import { NEW_POST } from "@/lib/types/log";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface LogPageProps {
   searchParams: Promise<{
@@ -8,6 +12,7 @@ interface LogPageProps {
     author?: string;
     photos?: string;
     page?: string;
+    compose?: string;
   }>;
 }
 
@@ -19,8 +24,11 @@ export default async function LogPage({ searchParams }: LogPageProps) {
   const page = parseInt(params.page || "1", 10);
   const pageSize = 100;
   const filters = { search, authorId, hasPhotos };
+  const compose = params.compose ?? null;
+  // A post being edited may not be on this page of the feed (an old link, a filter)
+  const composeId = compose && compose !== NEW_POST && UUID.test(compose) ? compose : null;
 
-  const [{ data: posts, count }, index, profile, userIsAdmin, userCanEdit] = await Promise.all([
+  const [{ data: posts, count }, index, profile, userIsAdmin, userCanEdit, composePost] = await Promise.all([
     getLogPosts({
       ...filters,
       limit: pageSize,
@@ -30,7 +38,11 @@ export default async function LogPage({ searchParams }: LogPageProps) {
     getUserProfile(),
     isAdmin(),
     canEdit(),
+    composeId ? getLogPost(composeId) : null,
   ]);
+
+  // The composer's author picker; admins can post for anyone
+  const users = userIsAdmin ? await getUsers().catch(() => []) : undefined;
 
   return (
     <LogPostsList
@@ -45,6 +57,9 @@ export default async function LogPage({ searchParams }: LogPageProps) {
       currentUserId={profile?.id || ""}
       isAdmin={userIsAdmin}
       canCreate={userCanEdit}
+      users={users}
+      currentUserName={profile?.full_name || profile?.email || ""}
+      composePost={composePost}
     />
   );
 }

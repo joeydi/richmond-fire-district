@@ -47,3 +47,6 @@ export interface LogPostInput {
   content: string;
   author_id?: string; // Only admins can set this for other users
 }
+
+/** `?compose=` on the log page: a new post, or else the id of the post being edited */
+export const NEW_POST = "new";
