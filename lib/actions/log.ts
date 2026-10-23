@@ -24,12 +24,12 @@ const STORAGE_BUCKET = "log-images";
 const createPostSchema = z.object({
   content: z.string().min(1, "Content is required").max(50000),
   author_id: z.string().uuid().optional(),
-  created_at: z.string().datetime().optional(),
+  created_at: z.string().datetime({ offset: true }).optional(),
 });
 
 const updatePostSchema = z.object({
   content: z.string().min(1, "Content is required").max(50000),
-  created_at: z.string().datetime().optional(),
+  created_at: z.string().datetime({ offset: true }).optional(),
   author_id: z.string().uuid().optional(),
 });
 
