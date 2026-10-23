@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { jwks } from "@/lib/supabase/jwks";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
@@ -19,7 +20,7 @@ export const getUserProfile = cache(async (): Promise<UserProfile | null> => {
   const supabase = await createClient();
 
   // Verifies the JWT locally against the project's signing keys (no Auth API round trip)
-  const { data } = await supabase.auth.getClaims();
+  const { data } = await supabase.auth.getClaims(undefined, { jwks });
   const userId = data?.claims.sub;
 
   if (!userId) return null;

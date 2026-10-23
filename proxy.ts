@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { jwks } from "@/lib/supabase/jwks";
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -31,8 +32,10 @@ export async function proxy(request: NextRequest) {
 
   // Refresh session if expired - required for Server Components.
   // getClaims verifies the JWT locally, avoiding an Auth API round trip per request.
-  const { data } = await supabase.auth.getClaims();
+  const authStart = performance.now();
+  const { data } = await supabase.auth.getClaims(undefined, { jwks });
   const user = data?.claims;
+  const authTiming = `proxy-auth;dur=${(performance.now() - authStart).toFixed(1)}`;
 
   // Protect dashboard routes
   if (
@@ -42,7 +45,7 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";
-    return NextResponse.redirect(url);
+    return withTiming(NextResponse.redirect(url), authTiming);
   }
 
   // Signed-in users skip the sign-in homepage
@@ -50,10 +53,16 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
-    return NextResponse.redirect(url);
+    return withTiming(NextResponse.redirect(url), authTiming);
   }
 
-  return supabaseResponse;
+  return withTiming(supabaseResponse, authTiming);
+}
+
+// Exposes how long session verification took, visible in curl -D - and browser devtools
+function withTiming(response: NextResponse, timing: string) {
+  response.headers.append("Server-Timing", timing);
+  return response;
 }
 
 export const config = {
