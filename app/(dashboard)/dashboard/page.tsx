@@ -43,7 +43,7 @@ export default async function DashboardPage() {
         <ChartSection />
       </Suspense>
 
-      <div className="flex flex-wrap">
+      <div className="flex flex-1 flex-wrap">
         <div className="min-w-0 flex-[2_1_520px] lg:border-r">
           <Suspense fallback={<ListSkeleton />}>
             <RecentReadingsSection />

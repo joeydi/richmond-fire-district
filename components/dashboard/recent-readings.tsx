@@ -40,12 +40,12 @@ function formatValue(reading: DashboardReading) {
 }
 
 const thClass =
-  "border-y bg-zinc-50 px-2 py-1.5 text-left font-mono text-[10px] font-medium tracking-[0.06em] text-muted-foreground";
+  "border-b bg-zinc-50 px-2 py-1.5 text-left font-mono text-[10px] font-medium tracking-[0.06em] text-muted-foreground";
 
 export function RecentReadings({ readings }: RecentReadingsProps) {
   return (
     <section aria-label="Recent readings" className="min-w-0">
-      <div className="flex h-9 items-center gap-2.5 px-4">
+      <div className="flex h-9 items-center gap-2.5 border-b px-4">
         <h2 className="text-[13px] font-semibold">Readings</h2>
         <span className="font-mono text-[11px] text-muted-foreground">LATEST {readings.length}</span>
         <div className="flex-1" />
