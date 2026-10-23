@@ -14,7 +14,6 @@ import { InfrastructureLayer } from "./infrastructure-layer";
 import { ParcelsLayer } from "./parcels-layer";
 import { ParcelPopup } from "./parcel-popup";
 import { LayerControls, type LayerVisibility } from "./layer-controls";
-import { Legend } from "./legend";
 import { Button } from "@/components/ui/button";
 import type { LatLng } from "@/components/infrastructure/point-form";
 
@@ -109,6 +108,19 @@ export function MapContainer({
     layerVisibility.infrastructure,
     layerVisibility.infrastructureTypes,
   ]);
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<InfrastructureType, number> = {
+      shutoff_valve: 0,
+      hydrant: 0,
+      well: 0,
+      meter: 0,
+      reservoir: 0,
+      other: 0,
+    };
+    for (const point of infrastructurePoints) counts[point.type]++;
+    return counts;
+  }, [infrastructurePoints]);
 
   // Fetch parcels for current viewport
   const fetchParcelsForViewport = useCallback(async () => {
@@ -312,13 +324,19 @@ export function MapContainer({
             map={mapInstance}
             parcel={selectedParcel}
             lngLat={parcelClickLngLat}
+            points={infrastructurePoints}
+            onPointSelect={(point) => {
+              setSelectedParcel(null);
+              onPointSelect?.(point);
+            }}
             onClose={handleCloseParcelPopup}
           />
           <LayerControls
             visibility={layerVisibility}
             onVisibilityChange={setLayerVisibility}
+            typeCounts={typeCounts}
+            parcelCount={parcels.length}
           />
-          <Legend />
         </>
       )}
 

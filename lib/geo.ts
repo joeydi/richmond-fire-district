@@ -26,3 +26,25 @@ export function compassBearing(lat1: number, lon1: number, lat2: number, lon2: n
   const degrees = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
   return COMPASS_POINTS[Math.round(degrees / 22.5) % 16];
 }
+
+/** Ray-casting test against one ring of [lng, lat] positions */
+function inRing(lng: number, lat: number, ring: GeoJSON.Position[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Whether a point falls inside a Polygon or MultiPolygon, honoring holes */
+export function pointInGeometry(lng: number, lat: number, geometry: GeoJSON.Geometry): boolean {
+  const polygons =
+    geometry.type === "Polygon" ? [geometry.coordinates] : geometry.type === "MultiPolygon" ? geometry.coordinates : [];
+  return polygons.some(
+    ([outer, ...holes]) => inRing(lng, lat, outer) && !holes.some((hole) => inRing(lng, lat, hole))
+  );
+}
