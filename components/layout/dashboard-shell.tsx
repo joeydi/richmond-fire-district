@@ -47,7 +47,12 @@ export function DashboardShell({ children, isAdmin, user }: DashboardShellProps)
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header onMenuClick={() => setMobileNavOpen(true)} />
-        <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
+        {/* Pages that manage their own full-bleed layout opt out of padding with data-flush.
+            relative keeps absolutely positioned descendants (e.g. sr-only labels) inside
+            this scroll container instead of stretching the document. */}
+        <main className="relative flex-1 overflow-auto p-4 has-[[data-flush]]:p-0 lg:p-6">
+          {children}
+        </main>
       </div>
     </div>
   );

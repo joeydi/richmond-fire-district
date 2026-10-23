@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Trash2, Loader2, ImageOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { deleteLogPostImage } from "@/lib/actions/log";
 import type { LogPostImage } from "@/lib/types/log";
 import { DeleteConfirmDialog } from "@/components/map/delete-confirm-dialog";
@@ -14,12 +15,15 @@ interface LogImageGalleryProps {
   images: LogPostImage[];
   canEdit?: boolean;
   onImageDeleted?: () => void;
+  /** compact: a row of small fixed-size thumbnails with a count, for feeds */
+  variant?: "grid" | "compact";
 }
 
 export function LogImageGallery({
   images,
   canEdit = false,
   onImageDeleted,
+  variant = "grid",
 }: LogImageGalleryProps) {
   const [selectedImage, setSelectedImage] = useState<LogPostImage | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -78,11 +82,22 @@ export function LogImageGallery({
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+      <div
+        className={cn(
+          variant === "compact"
+            ? "flex flex-wrap items-center gap-1"
+            : "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
+        )}
+      >
         {images.map((image) => (
           <div
             key={image.id}
-            className="relative group aspect-square rounded-lg overflow-hidden bg-slate-100 cursor-pointer"
+            className={cn(
+              "relative group overflow-hidden bg-zinc-100 cursor-pointer",
+              variant === "compact"
+                ? "size-16 rounded-sm border border-zinc-200"
+                : "aspect-square rounded-md"
+            )}
             onClick={() => setSelectedImage(image)}
           >
             {image.url ? (
@@ -91,7 +106,11 @@ export function LogImageGallery({
                 alt={image.filename}
                 fill
                 className="object-cover transition-transform group-hover:scale-105"
-                sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                sizes={
+                  variant === "compact"
+                    ? "64px"
+                    : "(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                }
               />
             ) : (
               <div className="flex items-center justify-center h-full">
@@ -111,6 +130,11 @@ export function LogImageGallery({
             )}
           </div>
         ))}
+        {variant === "compact" && (
+          <span className="ml-1.5 font-mono text-[11px] text-muted-foreground uppercase">
+            {images.length} {images.length === 1 ? "photo" : "photos"}
+          </span>
+        )}
       </div>
 
       {/* Lightbox - rendered via portal to escape any stacking context */}

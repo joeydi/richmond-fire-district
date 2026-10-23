@@ -13,6 +13,7 @@ import type {
   LogPost,
   LogPostImage,
   LogPostWithImages,
+  LogPostIndex,
   GetLogPostsOptions,
 } from "@/lib/types/log";
 import { notifyNewLogPost } from "@/lib/services/notifications";
@@ -42,23 +43,23 @@ const updatePostSchema = z.object({
 export async function getLogPosts(
   options: GetLogPostsOptions = {}
 ): Promise<{ data: LogPostWithImages[]; count: number }> {
-  const { limit = 20, offset = 0, search } = options;
+  const { limit = 20, offset = 0, search, authorId, hasPhotos } = options;
 
   const supabase = await createClient();
 
-  let query = supabase
-    .from("log_posts")
-    .select(
-      `
-      *,
-      author:profiles!author_id(id, full_name, email)
-    `,
-      { count: "exact" }
-    );
+  // An inner join on images limits results to posts that have at least one.
+  // Typed as string since the query parser can't type a conditional select.
+  const columns: string = hasPhotos
+    ? "*, author:profiles!author_id(id, full_name, email), log_post_images!inner(id)"
+    : "*, author:profiles!author_id(id, full_name, email)";
+  let query = supabase.from("log_posts").select(columns, { count: "exact" });
 
   // Apply search filter (content only - Supabase doesn't support or() on related tables)
   if (search) {
     query = query.ilike("content", `%${search}%`);
+  }
+  if (authorId) {
+    query = query.eq("author_id", authorId);
   }
 
   // Order by created_at descending (newest first)
@@ -76,7 +77,7 @@ export async function getLogPosts(
 
   // Fetch images for each post
   const postsWithImages = await Promise.all(
-    (data ?? []).map(async (post) => {
+    ((data ?? []) as unknown as LogPost[]).map(async (post) => {
       const images = await getLogPostImages(post.id);
       return {
         ...post,
@@ -86,6 +87,59 @@ export async function getLogPosts(
   );
 
   return { data: postsWithImages, count: count ?? 0 };
+}
+
+/**
+ * Lightweight index of log posts for the month navigator and author filter
+ */
+export async function getLogPostIndex(
+  options: Pick<GetLogPostsOptions, "search" | "authorId" | "hasPhotos"> = {}
+): Promise<LogPostIndex> {
+  const { search, authorId, hasPhotos } = options;
+
+  const supabase = await createClient();
+
+  const columns: string = hasPhotos ? "created_at, log_post_images!inner(id)" : "created_at";
+  let datesQuery = supabase
+    .from("log_posts")
+    .select(columns)
+    .order("created_at", { ascending: false });
+  if (search) {
+    datesQuery = datesQuery.ilike("content", `%${search}%`);
+  }
+  if (authorId) {
+    datesQuery = datesQuery.eq("author_id", authorId);
+  }
+
+  const [datesResult, authorsResult] = await Promise.all([
+    datesQuery,
+    supabase.from("log_posts").select("author:profiles!author_id(id, full_name, email)"),
+  ]);
+
+  if (datesResult.error) {
+    console.error("Error fetching log post index:", datesResult.error);
+  }
+  if (authorsResult.error) {
+    console.error("Error fetching log post authors:", authorsResult.error);
+  }
+
+  const authors = new Map<string, string>();
+  for (const row of (authorsResult.data ?? []) as unknown as {
+    author: { id: string; full_name: string | null; email: string } | null;
+  }[]) {
+    if (row.author && !authors.has(row.author.id)) {
+      authors.set(row.author.id, row.author.full_name || row.author.email);
+    }
+  }
+
+  return {
+    dates: ((datesResult.data ?? []) as unknown as { created_at: string }[]).map(
+      (row) => row.created_at
+    ),
+    authors: [...authors]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
 }
 
 /**
