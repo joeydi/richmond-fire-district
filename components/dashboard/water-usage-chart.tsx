@@ -5,16 +5,19 @@ import ReactECharts from "echarts-for-react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import {
+  calculateDailyRate,
+  summarizeRates,
+  type RateData,
+  type UsageData,
+} from "@/lib/usage";
 import {
   startOfWeek,
   startOfMonth,
@@ -23,28 +26,47 @@ import {
   parseISO,
 } from "date-fns";
 
-interface UsageData {
-  date: string;
-  total_usage: number;
-  reading_count: number;
-}
+// ECharts draws to SVG attributes, which can't read CSS variables or oklch
+const BRAND = "#0891b2";
+const INK = "#3f3f46";
+const MUTED = "#63636b";
+const GRID = "#ededf0";
+const AXIS = "#d4d4d8";
 
 interface WaterUsageChartProps {
   data: UsageData[];
   title?: string;
+  meterName?: string | null;
   earliestDate?: string;
 }
 
 type DateRange = "7d" | "30d" | "90d" | "year" | "all" | "custom";
 
+const RANGES: { value: DateRange; label: string }[] = [
+  { value: "7d", label: "7D" },
+  { value: "30d", label: "30D" },
+  { value: "90d", label: "90D" },
+  { value: "year", label: "YTD" },
+  { value: "all", label: "ALL" },
+  { value: "custom", label: "…" },
+];
+
+const fmt = (n: number) => Math.round(n).toLocaleString();
+
 export function WaterUsageChart({
   data,
-  title = "Water Usage",
+  title = "Water production",
+  meterName,
   earliestDate,
 }: WaterUsageChartProps) {
   const [range, setRange] = useState<DateRange>("30d");
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
+  const [monoFont] = useState(() =>
+    typeof document === "undefined"
+      ? "monospace"
+      : `${getComputedStyle(document.body).getPropertyValue("--font-geist-mono")}, monospace`
+  );
   const chartRef = useRef<ReactECharts>(null);
 
   const { filteredData, dateRange } = filterDataByRange(
@@ -63,159 +85,116 @@ export function WaterUsageChart({
 
   // Group data by period (daily, weekly, or monthly)
   const groupedData = groupDataByPeriod(rateData, groupingMode);
+  const summary = summarizeRates(groupedData.map((d) => d.rate));
+  const unitLabel = groupingMode === "daily" ? "GAL/DAY" : `${groupingMode.toUpperCase()} AVG GAL/DAY`;
 
-  // Calculate linear regression trendline
-  const trendlineData = calculateTrendline(groupedData);
+  const axisText = { color: MUTED, fontFamily: monoFont, fontSize: 10 };
 
   const option = {
-    responsive: true,
-    maintainAspectRatio: true,
-    legend: {
-      show: true,
-      data: ["Water Usage", "Trend"],
-      top: 0,
-      right: 0,
-    },
-    grid: {
-      left: "0px",
-      right: "0px",
-      top: "50px",
-      bottom: "20px",
-      containLabel: true,
-    },
+    animationDuration: 300,
+    grid: { left: 4, right: 20, top: 24, bottom: 4, containLabel: true },
     xAxis: {
       type: "category",
+      boundaryGap: false,
       data: groupedData.map((d) => d.label),
-      axisLine: { lineStyle: { color: "#e2e8f0" } },
-      axisLabel: {
-        color: "#94a3b8",
-        fontSize: 12,
-        rotate: groupingMode === "daily" && groupedData.length > 14 ? 45 : 0,
-      },
-      splitLine: { lineStyle: { color: "#f1f5f9" } },
+      axisLine: { lineStyle: { color: AXIS } },
+      axisTick: { show: false },
+      axisLabel: { ...axisText, hideOverlap: true },
     },
     yAxis: {
       type: "value",
-      axisLine: { lineStyle: { color: "#e2e8f0" } },
-      axisLabel: { color: "#94a3b8", fontSize: 12 },
-      splitLine: { lineStyle: { color: "#f1f5f9" } },
-      name: groupingMode === "daily" ? "Gallons/Day" : "Avg Gallons/Day",
-      nameTextStyle: { color: "#64748b" },
+      scale: true,
+      splitNumber: 4,
+      axisLine: { show: false },
+      axisLabel: { ...axisText, formatter: (v: number) => v.toLocaleString() },
+      splitLine: { lineStyle: { color: GRID, type: "dashed" } },
     },
     tooltip: {
       trigger: "axis",
-      backgroundColor: "rgba(255, 255, 255, 0.95)",
-      borderColor: "#e2e8f0",
-      textStyle: { color: "#1e293b" },
-      formatter: (params: any) => {
-        if (!params || !Array.isArray(params) || params.length === 0) {
-          return "";
-        }
-
-        const barData = params.find((p: any) => p.seriesName === "Water Usage");
-        const trendData = params.find((p: any) => p.seriesName === "Trend");
-
-        if (!barData) return "";
-
-        const dataItem = groupedData[barData.dataIndex];
-        const usage = Math.round(barData.value).toLocaleString();
-        const trend = trendData
-          ? Math.round(trendData.value).toLocaleString()
-          : null;
-
-        let html = `<div class="text-sm">
-          <p class="font-medium">${dataItem.label}</p>
-          <p class="text-blue-600 font-bold">${usage} gal/day${groupingMode !== "daily" ? " avg" : ""}</p>`;
-
+      axisPointer: { type: "line", lineStyle: { color: "#a1a1aa" } },
+      backgroundColor: "#18181b",
+      borderWidth: 0,
+      padding: [6, 8],
+      textStyle: { color: "#fff", fontFamily: monoFont, fontSize: 11 },
+      formatter: (params: { dataIndex: number }[]) => {
+        const item = groupedData[params?.[0]?.dataIndex];
+        if (!item) return "";
+        const diff = summary ? item.rate - summary.avg : 0;
+        const lines = [
+          `<span style="color:#a1a1aa">${item.label.toUpperCase()}</span>`,
+          `${fmt(item.rate)} gal/day${groupingMode !== "daily" ? " avg" : ""}`,
+          `<span style="color:#a1a1aa">${diff >= 0 ? "+" : "−"}${fmt(Math.abs(diff))} vs avg</span>`,
+        ];
         if (groupingMode !== "daily") {
-          html += `<p class="text-slate-500 text-xs">${dataItem.dataPoints} days aggregated</p>`;
+          lines.push(`<span style="color:#a1a1aa">${item.dataPoints} days</span>`);
         }
-        html += `<p class="text-slate-500 text-xs">${dataItem.reading_count} readings</p>`;
-
-        if (trend) {
-          html += `<p class="text-orange-500 text-xs">Trend: ${trend} gal/day</p>`;
-        }
-
-        html += `</div>`;
-        return html;
+        return lines.join("<br/>");
       },
     },
     series: [
       {
-        type: "bar",
-        name: "Water Usage",
-        data: groupedData.map((d) => d.rate),
-        itemStyle: {
-          color: {
-            type: "linear",
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: "#3b82f6" },
-              { offset: 1, color: "#60a5fa" },
-            ],
-          },
-          borderRadius: [4, 4, 0, 0],
-        },
-        emphasis: {
-          itemStyle: {
-            color: "#2563eb",
-          },
-        },
-        barMaxWidth: 40,
-      },
-      {
         type: "line",
-        name: "Trend",
-        data: trendlineData,
-        smooth: false,
-        lineStyle: {
-          color: "#f97316",
-          width: 2,
-          type: "dashed",
-        },
-        symbol: "none",
-        z: 10,
+        name: "Production",
+        data: groupedData.map((d) => Math.round(d.rate)),
+        showSymbol: false,
+        symbolSize: 7,
+        lineStyle: { color: BRAND, width: 2 },
+        itemStyle: { color: BRAND, borderColor: "#fff", borderWidth: 2 },
+        areaStyle: { color: BRAND, opacity: 0.08 },
+        markLine: summary
+          ? {
+              silent: true,
+              symbol: "none",
+              lineStyle: { color: "#71717a", type: "dashed", width: 1 },
+              label: {
+                position: "insideStartTop",
+                formatter: `AVG ${fmt(summary.avg)}`,
+                ...axisText,
+                color: INK,
+              },
+              data: [{ yAxis: summary.avg }],
+            }
+          : undefined,
+        markPoint:
+          groupedData.length > 2
+            ? {
+                symbol: "circle",
+                symbolSize: 7,
+                itemStyle: { color: BRAND, borderColor: "#fff", borderWidth: 2 },
+                label: { position: "top", distance: 6, ...axisText, color: INK, formatter: "{b}" },
+                data: [
+                  { type: "max", name: "MAX" },
+                  { type: "min", name: "MIN" },
+                ],
+              }
+            : undefined,
       },
     ],
   };
 
-  const handleRangeChange = (value: string) => {
+  const handleRangeChange = (value: DateRange) => {
     if (value === "custom" && range !== "custom") {
       // Pre-populate custom inputs with current preset dates
-      const now = new Date();
-      let start: Date;
-      const end = now;
-
-      switch (range) {
-        case "7d":
-          start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          break;
-        case "30d":
-          start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          break;
-        case "90d":
-          start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-          break;
-        case "year":
-          start = new Date(now.getFullYear(), 0, 1);
-          break;
-        case "all":
-          start = earliestDate ? parseISO(earliestDate) : new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-          break;
-        default:
-          start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      }
-
-      setCustomStart(format(start, "yyyy-MM-dd"));
-      setCustomEnd(format(end, "yyyy-MM-dd"));
+      setCustomStart(format(dateRange.start, "yyyy-MM-dd"));
+      setCustomEnd(format(dateRange.end, "yyyy-MM-dd"));
     } else if (value !== "custom") {
       setCustomStart("");
       setCustomEnd("");
     }
-    setRange(value as DateRange);
+    setRange(value);
+  };
+
+  const fileStem = `water-production-${format(dateRange.start, "yyyy-MM-dd")}-to-${format(dateRange.end, "yyyy-MM-dd")}`;
+
+  const handleExportCsv = () => {
+    const rows = [
+      ["period_start", "gallons_per_day", "days", "readings"],
+      ...groupedData.map((d) => [d.date, Math.round(d.rate), d.dataPoints, d.reading_count]),
+    ];
+    downloadBlob(
+      new Blob([rows.map((r) => r.join(",")).join("\n")], { type: "text/csv" }),
+      `${fileStem}.csv`
+    );
   };
 
   const handleExportPng = async () => {
@@ -248,97 +227,138 @@ export function WaterUsageChart({
       );
       if (!blob) throw new Error("Could not encode PNG");
 
-      const fileName = `water-usage-${format(dateRange.start, "yyyy-MM-dd")}-to-${format(dateRange.end, "yyyy-MM-dd")}.png`;
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = fileName;
-      link.click();
-      // Revoking in the same tick can cancel the download before it starts in
-      // Safari; defer until after the click has been handled.
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      downloadBlob(blob, `${fileStem}.png`);
     } catch {
       toast.error("Could not export chart");
     }
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2 gap-4 flex-wrap">
-        <CardTitle className="text-lg font-medium">{title}</CardTitle>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select value={range} onValueChange={handleRangeChange}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="year">This year</SelectItem>
-              <SelectItem value="all">All time</SelectItem>
-              <SelectItem value="custom">Custom range</SelectItem>
-            </SelectContent>
-          </Select>
+    <section aria-label={title} className="border-b px-4 pt-3 pb-2">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h2 className="text-[13px] font-semibold">{title}</h2>
+        <span className="font-mono text-[11px] text-muted-foreground uppercase">
+          {[meterName, unitLabel, formatRangeLabel(dateRange.start, dateRange.end)]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+        <div className="flex-1" />
 
-          {range === "custom" && (
-            <>
-              <div className="flex items-center gap-1">
-                <Label htmlFor="from-date" className="text-sm text-slate-500">
-                  From:
-                </Label>
-                <Input
-                  id="from-date"
-                  type="date"
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  className="w-36"
-                />
-              </div>
-              <div className="flex items-center gap-1">
-                <Label htmlFor="to-date" className="text-sm text-slate-500">
-                  To:
-                </Label>
-                <Input
-                  id="to-date"
-                  type="date"
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  className="w-36"
-                />
-              </div>
-            </>
-          )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportPng}
-            disabled={filteredData.length === 0}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
+        <div
+          role="group"
+          aria-label="Date range"
+          className="flex gap-0.5 rounded-md bg-muted p-0.5 font-mono text-[11px]"
+        >
+          {RANGES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={range === option.value}
+              title={option.value === "custom" ? "Custom range" : undefined}
+              onClick={() => handleRangeChange(option.value)}
+              className={cn(
+                "h-6 rounded-sm px-2 transition-colors",
+                range === option.value
+                  ? "bg-background font-medium text-foreground shadow-[0_0_0_1px_var(--border)]"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        {filteredData.length === 0 ? (
-          <div className="flex h-[30vw] min-h-[400px] items-center justify-center text-slate-500">
-            No data available for this period
-          </div>
-        ) : (
-          <div className="h-[30vw] min-h-[400px]">
-            <ReactECharts
-              ref={chartRef}
-              option={option}
-              style={{ height: "100%", width: "100%" }}
-              opts={{ renderer: "svg" }}
+
+        {range === "custom" && (
+          <div className="flex items-center gap-1.5 font-mono text-[11px]">
+            <label className="sr-only" htmlFor="from-date">From</label>
+            <input
+              id="from-date"
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="h-7 rounded-md border px-1.5"
+            />
+            <span className="text-muted-foreground">→</span>
+            <label className="sr-only" htmlFor="to-date">To</label>
+            <input
+              id="to-date"
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="h-7 rounded-md border px-1.5"
             />
           </div>
         )}
-      </CardContent>
-    </Card>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 font-mono text-[11px]"
+              disabled={groupedData.length === 0}
+            >
+              <Download className="size-3.5" />
+              EXPORT
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuItem onClick={handleExportCsv}>CSV data</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportPng}>PNG image</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {summary && (
+        <dl className="mb-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px]">
+          {[
+            ["MIN", fmt(summary.min)],
+            ["AVG", fmt(summary.avg)],
+            ["MAX", fmt(summary.max)],
+            ["σ", fmt(summary.stdDev)],
+            ...(groupingMode === "daily" ? [["Σ", `${fmt(summary.total)} GAL`]] : []),
+          ].map(([label, value]) => (
+            <div key={label} className="flex gap-1.5">
+              <dt className="text-muted-foreground">{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {groupedData.length === 0 ? (
+        <div className="flex h-[260px] items-center justify-center text-xs text-muted-foreground lg:h-[300px]">
+          No data for this period
+        </div>
+      ) : (
+        <div className="h-[260px] lg:h-[300px]">
+          <ReactECharts
+            ref={chartRef}
+            option={option}
+            notMerge
+            style={{ height: "100%", width: "100%" }}
+            opts={{ renderer: "svg" }}
+          />
+        </div>
+      )}
+    </section>
   );
+}
+
+function formatRangeLabel(start: Date, end: Date): string {
+  const pattern = start.getFullYear() === end.getFullYear() ? "MMM d" : "MMM d, yyyy";
+  return `${format(start, pattern)} – ${format(end, pattern)}`;
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName;
+  link.click();
+  // Revoking in the same tick can cancel the download before it starts in
+  // Safari; defer until after the click has been handled.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -422,49 +442,6 @@ function filterDataByRange(
   };
 }
 
-interface RateData {
-  date: string;
-  rate: number;
-  reading_count: number;
-}
-
-function calculateDailyRate(data: UsageData[]): RateData[] {
-  if (data.length === 0) return [];
-
-  // Sort by date ascending to calculate differences correctly
-  const sorted = [...data].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
-
-  const rateData: RateData[] = [];
-
-  for (let i = 1; i < sorted.length; i++) {
-    const current = sorted[i];
-    const previous = sorted[i - 1];
-
-    // Calculate the difference in usage between consecutive days
-    const usageDiff = current.total_usage - previous.total_usage;
-
-    // Calculate days between readings (usually 1, but could be more if data is sparse)
-    const daysDiff = Math.max(
-      1,
-      (new Date(current.date).getTime() - new Date(previous.date).getTime()) /
-        (24 * 60 * 60 * 1000)
-    );
-
-    // Rate = usage difference / days (gallons per day)
-    const rate = usageDiff / daysDiff;
-
-    rateData.push({
-      date: current.date,
-      rate: Math.max(0, rate), // Avoid negative rates from meter resets
-      reading_count: current.reading_count,
-    });
-  }
-
-  return rateData;
-}
-
 type GroupingMode = "daily" | "weekly" | "monthly";
 
 interface GroupedRateData {
@@ -528,45 +505,4 @@ function groupDataByPeriod(
       };
     })
     .sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function calculateTrendline(data: GroupedRateData[]): number[] {
-  const n = data.length;
-  if (n < 2) {
-    return data.map((d) => d.rate);
-  }
-
-  // Filter out zero-rate days (meter/pump outages) from regression calculation
-  const validPoints = data
-    .map((d, i) => ({ index: i, rate: d.rate }))
-    .filter((p) => p.rate > 0);
-
-  // If no valid points or only one, return flat line at average of valid rates
-  if (validPoints.length < 2) {
-    const avgRate = validPoints.length > 0 ? validPoints[0].rate : 0;
-    return data.map(() => avgRate);
-  }
-
-  // Calculate means using only valid (non-zero) points
-  const xMean =
-    validPoints.reduce((a, p) => a + p.index, 0) / validPoints.length;
-  const yMean =
-    validPoints.reduce((a, p) => a + p.rate, 0) / validPoints.length;
-
-  // Calculate slope and intercept using least squares on valid points
-  let numerator = 0;
-  let denominator = 0;
-
-  for (const point of validPoints) {
-    const xDiff = point.index - xMean;
-    const yDiff = point.rate - yMean;
-    numerator += xDiff * yDiff;
-    denominator += xDiff * xDiff;
-  }
-
-  const slope = denominator !== 0 ? numerator / denominator : 0;
-  const intercept = yMean - slope * xMean;
-
-  // Generate trendline values for ALL positions (including zeros for visual continuity)
-  return data.map((_, i) => Math.max(0, slope * i + intercept));
 }

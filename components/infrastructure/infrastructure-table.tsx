@@ -243,7 +243,7 @@ export function InfrastructureTable({
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-x-auto">
+      <div className="relative flex-1 overflow-x-auto">
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="bg-zinc-50 text-left font-mono text-[10px] tracking-[0.06em] text-muted-foreground uppercase">
