@@ -40,14 +40,16 @@ export function MonthNavigation({
   const canGoNext = nextMonth <= format(new Date(), "yyyy-MM");
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1">
       <Button
         variant="outline"
         size="icon"
+        className="size-7"
         onClick={() => navigateToMonth(prevMonth)}
         disabled={isPending || !canGoPrev}
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="size-4" />
+        <span className="sr-only">Previous month</span>
       </Button>
 
       <Select
@@ -55,7 +57,7 @@ export function MonthNavigation({
         onValueChange={navigateToMonth}
         disabled={isPending}
       >
-        <SelectTrigger className="w-48">
+        <SelectTrigger size="sm" className="!h-7 w-40 px-2 font-mono text-xs uppercase" aria-label="Month">
           <SelectValue>
             {format(currentDate, "MMMM yyyy")}
           </SelectValue>
@@ -78,10 +80,12 @@ export function MonthNavigation({
       <Button
         variant="outline"
         size="icon"
+        className="size-7"
         onClick={() => navigateToMonth(nextMonth)}
         disabled={isPending || !canGoNext}
       >
-        <ChevronRight className="h-4 w-4" />
+        <ChevronRight className="size-4" />
+        <span className="sr-only">Next month</span>
       </Button>
     </div>
   );

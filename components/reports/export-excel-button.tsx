@@ -49,9 +49,9 @@ export function ExportExcelButton({ days, month, carryTotal }: ExportExcelButton
   };
 
   return (
-    <Button onClick={handleExport} variant="outline">
-      <Download className="mr-2 h-4 w-4" />
-      Export Excel
+    <Button onClick={handleExport} variant="outline" size="sm" className="h-7 px-2 font-mono text-[11px]">
+      <Download className="size-3.5" />
+      EXPORT EXCEL
     </Button>
   );
 }
