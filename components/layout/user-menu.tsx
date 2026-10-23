@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { User, LogOut, MoreVertical, Bell } from "lucide-react";
+import { User, LogOut, ChevronsUpDown, Bell } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,11 +11,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { logout } from "@/lib/actions/auth";
 
+export interface UserMenuUser {
+  email: string;
+  full_name: string | null;
+  role?: string | null;
+}
+
 interface UserMenuProps {
-  user: {
-    email: string;
-    full_name: string | null;
-  } | null;
+  user: UserMenuUser | null;
 }
 
 function getInitials(name: string | null, email: string): string {
@@ -36,23 +39,27 @@ export function UserMenu({ user }: UserMenuProps) {
   const displayName = user.full_name || user.email.split("@")[0];
 
   return (
-    <div className="border-t border-slate-700 p-3">
+    <div className="border-t border-sidebar-border pt-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-slate-800">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-600 text-sm font-medium text-white">
+          <button className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60">
+            <div className="flex size-[22px] shrink-0 items-center justify-center rounded-sm bg-sidebar-accent font-mono text-[10px] text-foreground">
               {initials}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">
-                {displayName}
-              </p>
-              <p className="truncate text-xs text-slate-400">{user.email}</p>
-            </div>
-            <MoreVertical className="h-4 w-4 shrink-0 text-slate-400" />
+            <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+              {displayName}
+            </span>
+            {user.role && (
+              <span className="font-mono text-[10px] text-muted-foreground uppercase">
+                {user.role}
+              </span>
+            )}
+            <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="top" className="w-56">
+        <DropdownMenuContent align="start" side="top" className="w-52">
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">{user.email}</div>
+          <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Link href="/dashboard/account" className="cursor-pointer">
               <User className="mr-2 h-4 w-4" />

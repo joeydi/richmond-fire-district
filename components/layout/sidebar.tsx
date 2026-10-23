@@ -2,98 +2,89 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Droplet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Droplets,
-  FileText,
-  ScrollText,
-  Map,
-  Building2,
-  Users,
-  Settings,
-} from "lucide-react";
-import { UserMenu } from "./user-menu";
-
-const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Readings", href: "/dashboard/readings", icon: Droplets },
-  { name: "Reports", href: "/dashboard/reports", icon: FileText },
-  { name: "Log", href: "/dashboard/log", icon: ScrollText },
-  { name: "Map", href: "/dashboard/map", icon: Map },
-  { name: "Infrastructure", href: "/dashboard/infrastructure", icon: Building2 },
-  { name: "Contacts", href: "/dashboard/contacts", icon: Users },
-];
-
-const adminNavigation = [
-  { name: "Users", href: "/dashboard/admin/users", icon: Settings },
-];
+import { getNavGroups, isNavItemActive } from "./nav-config";
+import { UserMenu, type UserMenuUser } from "./user-menu";
 
 interface SidebarProps {
   isAdmin?: boolean;
-  user?: {
-    email: string;
-    full_name: string | null;
-  } | null;
+  user?: UserMenuUser | null;
+  onJump?: () => void;
+  onNavigate?: () => void;
+  className?: string;
 }
 
-export function Sidebar({ isAdmin = false, user }: SidebarProps) {
+export function Sidebar({ isAdmin = false, user, onJump, onNavigate, className }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full w-64 flex-col bg-slate-900">
-      <div className="flex h-16 items-center px-6">
-        <h1 className="text-xl font-bold text-white">Richmond Fire</h1>
-      </div>
-      <nav className="flex-1 space-y-1 px-3 py-4">
-        {navigation.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-slate-800 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              )}
-            >
-              <item.icon className="h-5 w-5" />
-              {item.name}
-            </Link>
-          );
-        })}
+    <div
+      className={cn(
+        "flex h-full w-52 flex-col gap-3 border-r border-sidebar-border bg-sidebar px-2 py-2.5 text-[13px] text-sidebar-foreground",
+        className
+      )}
+    >
+      <Link
+        href="/dashboard"
+        onClick={onNavigate}
+        className="flex h-7 items-center gap-2 px-1.5 text-foreground"
+      >
+        <Droplet className="size-4 text-brand" strokeWidth={2.25} />
+        <span className="font-mono text-xs font-medium tracking-wide">RFD / WATER</span>
+      </Link>
 
-        {isAdmin && (
-          <>
-            <div className="my-4 border-t border-slate-700" />
-            <p className="px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Admin
-            </p>
-            {adminNavigation.map((item) => {
-              const isActive = pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
+      {onJump && (
+        <button
+          type="button"
+          onClick={onJump}
+          className="flex h-7 items-center gap-2 rounded-md border bg-background px-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span className="flex-1 text-left">Jump to…</span>
+          <kbd>⌘K</kbd>
+        </button>
+      )}
+
+      {getNavGroups(isAdmin).map((group) => (
+        <nav key={group.label} aria-label={group.label} className="flex flex-col gap-px">
+          <span className="px-2 pb-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground uppercase">
+            {group.label}
+          </span>
+          {group.items.map((item) => {
+            const isActive = isNavItemActive(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onNavigate}
+                aria-current={isActive ? "page" : undefined}
+                className={cn(
+                  "group flex h-7 items-center gap-2 rounded-md px-2 transition-colors",
+                  isActive
+                    ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                    : "hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+                )}
+              >
+                <item.icon
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-slate-800 text-white"
-                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    "size-[15px]",
+                    isActive ? "text-sidebar-primary" : "text-muted-foreground"
                   )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </>
-        )}
-      </nav>
+                  strokeWidth={1.75}
+                />
+                <span className="flex-1">{item.name}</span>
+                {item.shortcut && (
+                  <span className="hidden font-mono text-[10px] text-muted-foreground uppercase lg:inline">
+                    G {item.shortcut}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+      ))}
+
+      <div className="flex-1" />
       <UserMenu user={user ?? null} />
     </div>
   );
