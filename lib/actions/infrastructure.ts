@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/auth/roles";
 import { compassBearing, distanceMeters } from "@/lib/geo";
+import { findLogMentions, type LogMention } from "@/lib/log-mentions";
 import type {
   InfrastructurePoint,
   InfrastructureImage,
@@ -243,15 +244,6 @@ export interface NearbyPoint {
   bearing: string;
 }
 
-export interface LogMention {
-  id: string;
-  created_at: string;
-  authorName: string;
-  before: string;
-  match: string;
-  after: string;
-}
-
 export interface InfrastructurePointDetails {
   point: InfrastructurePoint;
   /** Every other point within the map preview radius, nearest first */
@@ -261,7 +253,6 @@ export interface InfrastructurePointDetails {
 }
 
 const NEARBY_RADIUS_M = 150;
-const MENTION_CONTEXT_CHARS = 90;
 
 /**
  * Text a log post would use to refer to a point: the house number and street
@@ -276,15 +267,6 @@ function getMentionTerm(name: string): string {
     .replace(/\s+/g, " ")
     .trim();
   return stripped || name;
-}
-
-function stripMarkdown(content: string): string {
-  return content
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[*_#>`~]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 export async function getInfrastructurePointDetails(
@@ -314,37 +296,7 @@ export async function getInfrastructurePointDetails(
     .sort((a, b) => a.distanceM - b.distanceM);
 
   const mentionTerm = getMentionTerm(point.name);
-  const { data: posts, error: postsError } = await supabase
-    .from("log_posts")
-    .select("id, content, created_at, author:profiles!author_id(full_name, email)")
-    .ilike("content", `%${mentionTerm}%`)
-    .order("created_at", { ascending: false })
-    .limit(5);
-  if (postsError) {
-    console.error("Error fetching log mentions:", postsError);
-  }
-
-  const mentions: LogMention[] = [];
-  for (const post of (posts ?? []) as unknown as {
-    id: string;
-    content: string;
-    created_at: string;
-    author: { full_name: string | null; email: string } | null;
-  }[]) {
-    const text = stripMarkdown(post.content);
-    const index = text.toLowerCase().indexOf(mentionTerm.toLowerCase());
-    if (index === -1) continue;
-    const start = Math.max(0, index - MENTION_CONTEXT_CHARS);
-    const end = Math.min(text.length, index + mentionTerm.length + MENTION_CONTEXT_CHARS);
-    mentions.push({
-      id: post.id,
-      created_at: post.created_at,
-      authorName: post.author?.full_name || post.author?.email || "Unknown",
-      before: (start > 0 ? "…" : "") + text.slice(start, index),
-      match: text.slice(index, index + mentionTerm.length),
-      after: text.slice(index + mentionTerm.length, end) + (end < text.length ? "…" : ""),
-    });
-  }
+  const mentions = await findLogMentions(supabase, [mentionTerm]);
 
   return { point, nearby, mentions, mentionTerm };
 }

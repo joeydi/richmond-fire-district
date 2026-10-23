@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireEditor } from "@/lib/auth/roles";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { findLogMentions, type LogMention } from "@/lib/log-mentions";
+import type { InfrastructurePoint } from "@/lib/types/infrastructure";
 
 // Contact types
 export type ContactType =
@@ -135,6 +137,61 @@ export async function getContact(id: string): Promise<Contact | null> {
   }
 
   return data;
+}
+
+export interface ContactDetails {
+  contact: Contact;
+  /** Infrastructure points at the contact's street address */
+  infrastructure: Pick<InfrastructurePoint, "id" | "name" | "type" | "status">[];
+  mentions: LogMention[];
+  /** The terms log posts were searched for, for the empty state */
+  mentionTerms: string[];
+}
+
+const MIN_SURNAME_MATCH = 4;
+
+/**
+ * A contact plus what's linked to them by text: infrastructure named for their
+ * house number and street ("114 Robbins Mtn. Ext." → "114 Robbins Mtn Ext
+ * Shutoff"), and log posts mentioning their full name or surname.
+ */
+export async function getContactDetails(id: string): Promise<ContactDetails | null> {
+  const contact = await getContact(id);
+  if (!contact) return null;
+
+  const supabase = await createClient();
+
+  const address = contact.address?.match(/^(\d+[A-Za-z]?)\s+([A-Za-z]+)/);
+  const infrastructurePromise = address
+    ? supabase
+        .from("infrastructure_points")
+        .select("id, name, type, status")
+        .ilike("name", `${address[1]} ${address[2]}%`)
+        .order("name")
+    : null;
+
+  // Surnames catch possessives like "Anderson's shutoff"; short ones match too broadly
+  const nameParts = contact.name.trim().split(/\s+/);
+  const surname = nameParts.length > 1 ? nameParts[nameParts.length - 1] : null;
+  const mentionTerms = [
+    contact.name.trim(),
+    ...(surname && surname.length >= MIN_SURNAME_MATCH ? [surname] : []),
+  ];
+
+  const [infrastructureResult, mentions] = await Promise.all([
+    infrastructurePromise,
+    findLogMentions(supabase, mentionTerms),
+  ]);
+  if (infrastructureResult?.error) {
+    console.error("Error fetching contact infrastructure:", infrastructureResult.error);
+  }
+
+  return {
+    contact,
+    infrastructure: infrastructureResult?.data ?? [],
+    mentions,
+    mentionTerms,
+  };
 }
 
 /**
