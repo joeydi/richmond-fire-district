@@ -29,10 +29,10 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // Refresh session if expired - required for Server Components
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Refresh session if expired - required for Server Components.
+  // getClaims verifies the JWT locally, avoiding an Auth API round trip per request.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims;
 
   // Protect dashboard routes
   if (

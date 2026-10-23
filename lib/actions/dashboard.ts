@@ -134,45 +134,50 @@ export async function getRecentReadings(
 export async function getDashboardStatsFallback() {
   const supabase = await createClient();
 
-  // Get latest reading timestamp (from any reading type)
-  const { data: latestMeter } = await supabase
-    .from("meter_readings")
-    .select("recorded_at")
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  const { data: latestChlorineReading } = await supabase
-    .from("chlorine_readings")
-    .select("recorded_at")
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  const { data: latestReservoir } = await supabase
-    .from("reservoir_readings")
-    .select("recorded_at, level_inches, reservoirs (name, max_level_inches)")
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .single();
+  // Independent "latest" lookups run in parallel; each is a round trip to Supabase
+  const [
+    { data: latestMeter },
+    { data: latestChlorine },
+    { data: latestReservoir },
+    { data: latestPumpRate },
+  ] = await Promise.all([
+    // Most recent meter reading also identifies which meter to use for production
+    supabase
+      .from("meter_readings")
+      .select("recorded_at, meter_id, meters (name)")
+      .order("recorded_at", { ascending: false })
+      .limit(1)
+      .single(),
+    supabase
+      .from("chlorine_readings")
+      .select("recorded_at, residual_level")
+      .order("recorded_at", { ascending: false })
+      .limit(1)
+      .single(),
+    supabase
+      .from("reservoir_readings")
+      .select("recorded_at, level_inches, reservoirs (name, max_level_inches)")
+      .order("recorded_at", { ascending: false })
+      .limit(1)
+      .single(),
+    // Pump flow (gpm) from the most recent back-to-back reading pair
+    supabase
+      .from("meter_readings")
+      .select("production_rate, recorded_at")
+      .not("production_rate", "is", null)
+      .order("recorded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   const reservoir = latestReservoir?.reservoirs as unknown as {
     name: string;
     max_level_inches: number | null;
   } | null;
 
-  // Pump flow (gpm) from the most recent back-to-back reading pair
-  const { data: latestPumpRate } = await supabase
-    .from("meter_readings")
-    .select("production_rate, recorded_at")
-    .not("production_rate", "is", null)
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
   // Find the most recent reading across all types
   const timestamps = [
     latestMeter?.recorded_at,
-    latestChlorineReading?.recorded_at,
+    latestChlorine?.recorded_at,
     latestReservoir?.recorded_at,
   ].filter(Boolean) as string[];
 
@@ -181,26 +186,18 @@ export async function getDashboardStatsFallback() {
       ? timestamps.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
       : null;
 
-  // Get the most recent meter reading to identify which meter to use
-  const { data: mostRecentReading } = await supabase
-    .from("meter_readings")
-    .select("meter_id, meters (name)")
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .single();
-
   // Calculate production rate as difference between daily averages for that meter
   let latestProductionRate: number | null = null;
   let latestProductionMeter: string | null = null;
 
-  if (mostRecentReading?.meter_id) {
-    latestProductionMeter = (mostRecentReading.meters as unknown as { name: string } | null)?.name ?? null;
+  if (latestMeter?.meter_id) {
+    latestProductionMeter = (latestMeter.meters as unknown as { name: string } | null)?.name ?? null;
 
     // Get recent readings for this specific meter
     const { data: meterReadings } = await supabase
       .from("meter_readings")
       .select("reading_value, recorded_at")
-      .eq("meter_id", mostRecentReading.meter_id)
+      .eq("meter_id", latestMeter.meter_id)
       .order("recorded_at", { ascending: false })
       .limit(50);
 
@@ -235,14 +232,6 @@ export async function getDashboardStatsFallback() {
     }
   }
 
-  // Get latest chlorine reading
-  const { data: latestChlorine } = await supabase
-    .from("chlorine_readings")
-    .select("residual_level")
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .single();
-
   return {
     latestReadingAt,
     latestProductionRate,
@@ -259,43 +248,44 @@ export async function getDashboardStatsFallback() {
 export async function getRecentReadingsFallback(limit: number = 5) {
   const supabase = await createClient();
 
-  const { data: waterReadings } = await supabase
-    .from("meter_readings")
-    .select(`
-      id,
-      meter_id,
-      reading_value,
-      production_rate,
-      interpolated,
-      recorded_at,
-      meters (name)
-    `)
-    .order("recorded_at", { ascending: false })
-    .limit(limit);
-
-  const { data: chlorineReadings } = await supabase
-    .from("chlorine_readings")
-    .select(`
-      id,
-      residual_level,
-      interpolated,
-      recorded_at,
-      infrastructure_points (name)
-    `)
-    .order("recorded_at", { ascending: false })
-    .limit(limit);
-
-  const { data: reservoirReadings } = await supabase
-    .from("reservoir_readings")
-    .select(`
-      id,
-      level_inches,
-      level_percent,
-      recorded_at,
-      reservoirs (name)
-    `)
-    .order("recorded_at", { ascending: false })
-    .limit(limit);
+  const [{ data: waterReadings }, { data: chlorineReadings }, { data: reservoirReadings }] =
+    await Promise.all([
+      supabase
+        .from("meter_readings")
+        .select(`
+          id,
+          meter_id,
+          reading_value,
+          production_rate,
+          interpolated,
+          recorded_at,
+          meters (name)
+        `)
+        .order("recorded_at", { ascending: false })
+        .limit(limit),
+      supabase
+        .from("chlorine_readings")
+        .select(`
+          id,
+          residual_level,
+          interpolated,
+          recorded_at,
+          infrastructure_points (name)
+        `)
+        .order("recorded_at", { ascending: false })
+        .limit(limit),
+      supabase
+        .from("reservoir_readings")
+        .select(`
+          id,
+          level_inches,
+          level_percent,
+          recorded_at,
+          reservoirs (name)
+        `)
+        .order("recorded_at", { ascending: false })
+        .limit(limit),
+    ]);
 
   return {
     waterReadings: waterReadings ?? [],

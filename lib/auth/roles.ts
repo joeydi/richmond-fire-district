@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 export type UserRole = "admin" | "editor" | "member";
 
@@ -11,25 +12,26 @@ export interface UserProfile {
 }
 
 /**
- * Get the current user's profile including their role
+ * Get the current user's profile including their role.
+ * Memoized per request, so layouts, pages and role checks share one lookup.
  */
-export async function getUserProfile(): Promise<UserProfile | null> {
+export const getUserProfile = cache(async (): Promise<UserProfile | null> => {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Verifies the JWT locally against the project's signing keys (no Auth API round trip)
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims.sub;
 
-  if (!user) return null;
+  if (!userId) return null;
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, email, full_name, role")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single();
 
   return profile;
-}
+});
 
 /**
  * Get the current user's role
