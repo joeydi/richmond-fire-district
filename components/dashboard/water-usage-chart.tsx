@@ -32,6 +32,7 @@ const INK = "#3f3f46";
 const MUTED = "#63636b";
 const GRID = "#ededf0";
 const AXIS = "#d4d4d8";
+const TREND = "#ea580c";
 
 interface WaterUsageChartProps {
   data: UsageData[];
@@ -67,6 +68,7 @@ export function WaterUsageChart({
   // Off: the y-axis fits the data so day-to-day variation is visible.
   // On: it starts at 0 so values compare by absolute size.
   const [zeroBaseline, setZeroBaseline] = useState(false);
+  const [referenceLine, setReferenceLine] = useState<"trend" | "avg">("trend");
   const [monoFont] = useState(() =>
     typeof document === "undefined"
       ? "monospace"
@@ -102,6 +104,15 @@ export function WaterUsageChart({
   // Group data by period (daily, weekly, or monthly)
   const groupedData = groupDataByPeriod(rateData, groupingMode);
   const summary = summarizeRates(groupedData.map((d) => d.rate));
+
+  // Linear regression over the range; its start-to-end change is the headline trend
+  const trendline = calculateTrendline(groupedData);
+  const trendChange =
+    trendline.length > 1 ? trendline[trendline.length - 1] - trendline[0] : null;
+  const trendPercent =
+    trendChange !== null && trendline[0] > 0 ? (trendChange / trendline[0]) * 100 : null;
+  const showTrend = referenceLine === "trend" && trendline.length > 1;
+
   const unitLabel = groupingMode === "daily" ? "GAL/DAY" : `${groupingMode.toUpperCase()} AVG GAL/DAY`;
 
   const axisText = { color: MUTED, fontFamily: monoFont, fontSize: 10 };
@@ -111,7 +122,8 @@ export function WaterUsageChart({
     animationEasing: "cubicOut",
     animationDurationUpdate: 300,
     animationEasingUpdate: "cubicOut",
-    grid: { left: 4, right: 20, top: 24, bottom: 4, containLabel: true },
+    // Extra right padding leaves room for the trend line's end label
+    grid: { left: 4, right: showTrend ? 52 : 20, top: 24, bottom: 4, containLabel: true },
     xAxis: {
       type: "category",
       boundaryGap: false,
@@ -137,13 +149,15 @@ export function WaterUsageChart({
       padding: [6, 8],
       textStyle: { color: "#fff", fontFamily: monoFont, fontSize: 11 },
       formatter: (params: { dataIndex: number }[]) => {
-        const item = groupedData[params?.[0]?.dataIndex];
+        const index = params?.[0]?.dataIndex;
+        const item = groupedData[index];
         if (!item) return "";
-        const diff = summary ? item.rate - summary.avg : 0;
+        const reference = showTrend ? trendline[index] : summary?.avg ?? item.rate;
+        const diff = item.rate - reference;
         const lines = [
           `<span style="color:#a1a1aa">${item.label.toUpperCase()}</span>`,
           `${fmt(item.rate)} gal/day${groupingMode !== "daily" ? " avg" : ""}`,
-          `<span style="color:#a1a1aa">${diff >= 0 ? "+" : "−"}${fmt(Math.abs(diff))} vs avg</span>`,
+          `<span style="color:#a1a1aa">${diff >= 0 ? "+" : "−"}${fmt(Math.abs(diff))} vs ${showTrend ? "trend" : "avg"}</span>`,
         ];
         if (groupingMode !== "daily") {
           lines.push(`<span style="color:#a1a1aa">${item.dataPoints} days</span>`);
@@ -153,6 +167,7 @@ export function WaterUsageChart({
     },
     series: [
       {
+        id: "production",
         type: "line",
         name: "Production",
         data: groupedData.map((d) => Math.round(d.rate)),
@@ -161,7 +176,8 @@ export function WaterUsageChart({
         lineStyle: { color: BRAND, width: 2 },
         itemStyle: { color: BRAND, borderColor: "#fff", borderWidth: 2 },
         areaStyle: { color: BRAND, opacity: 0.08 },
-        markLine: summary
+        markLine:
+          summary && referenceLine === "avg"
           ? {
               silent: true,
               symbol: "none",
@@ -174,7 +190,7 @@ export function WaterUsageChart({
               },
               data: [{ yAxis: summary.avg }],
             }
-          : undefined,
+          : { data: [] },
         markPoint:
           markersReady && groupedData.length > 2
             ? {
@@ -187,8 +203,24 @@ export function WaterUsageChart({
                   { type: "min", name: "MIN" },
                 ],
               }
-            : undefined,
+            : { data: [] },
       },
+      ...(showTrend
+        ? [
+            {
+              id: "trend",
+              type: "line",
+              name: "Trend",
+              data: trendline.map((v) => Math.round(v)),
+              showSymbol: false,
+              silent: true,
+              z: 3,
+              lineStyle: { color: TREND, width: 1.5, type: "dashed" },
+              emphasis: { disabled: true },
+              endLabel: { show: true, formatter: "TREND", ...axisText, color: INK },
+            },
+          ]
+        : []),
     ],
   };
 
@@ -208,8 +240,14 @@ export function WaterUsageChart({
 
   const handleExportCsv = () => {
     const rows = [
-      ["period_start", "gallons_per_day", "days", "readings"],
-      ...groupedData.map((d) => [d.date, Math.round(d.rate), d.dataPoints, d.reading_count]),
+      ["period_start", "gallons_per_day", "trend_gallons_per_day", "days", "readings"],
+      ...groupedData.map((d, i) => [
+        d.date,
+        Math.round(d.rate),
+        trendline[i] !== undefined ? Math.round(trendline[i]) : "",
+        d.dataPoints,
+        d.reading_count,
+      ]),
     ];
     downloadBlob(
       new Blob([rows.map((r) => r.join(",")).join("\n")], { type: "text/csv" }),
@@ -288,6 +326,30 @@ export function WaterUsageChart({
           ))}
         </div>
 
+        <div
+          role="group"
+          aria-label="Reference line"
+          className="flex gap-0.5 rounded-md bg-muted p-0.5 font-mono text-[11px]"
+        >
+          {(["trend", "avg"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={referenceLine === mode}
+              onClick={() => setReferenceLine(mode)}
+              title={mode === "trend" ? "Show the linear trend" : "Show the average"}
+              className={cn(
+                "h-6 rounded-sm px-2 uppercase transition-colors",
+                referenceLine === mode
+                  ? "bg-background font-medium text-foreground shadow-[0_0_0_1px_var(--border)]"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+
         <button
           type="button"
           aria-pressed={zeroBaseline}
@@ -310,9 +372,7 @@ export function WaterUsageChart({
               id="from-date"
               type="date"
               value={customStart}
-              onChange={(e) => {
-                            setCustomStart(e.target.value);
-              }}
+              onChange={(e) => setCustomStart(e.target.value)}
               className="h-7 rounded-md border px-1.5"
             />
             <span className="text-muted-foreground">→</span>
@@ -321,9 +381,7 @@ export function WaterUsageChart({
               id="to-date"
               type="date"
               value={customEnd}
-              onChange={(e) => {
-                            setCustomEnd(e.target.value);
-              }}
+              onChange={(e) => setCustomEnd(e.target.value)}
               className="h-7 rounded-md border px-1.5"
             />
           </div>
@@ -355,6 +413,16 @@ export function WaterUsageChart({
             ["AVG", fmt(summary.avg)],
             ["MAX", fmt(summary.max)],
             ["σ", fmt(summary.stdDev)],
+            ...(trendChange !== null
+              ? [
+                  [
+                    "TREND",
+                    `${trendChange >= 0 ? "▲" : "▼"} ${fmt(Math.abs(trendChange))}${
+                      trendPercent !== null ? ` (${Math.abs(trendPercent).toFixed(1)}%)` : ""
+                    }`,
+                  ],
+                ]
+              : []),
             ...(groupingMode === "daily" ? [["Σ", `${fmt(summary.total)} GAL`]] : []),
           ].map(([label, value]) => (
             <div key={label} className="flex gap-1.5">
@@ -378,7 +446,9 @@ export function WaterUsageChart({
             key={chartKey}
             ref={chartRef}
             option={option}
-            notMerge
+            // Update series in place (matched by id) instead of rebuilding them, so
+            // adding markers or toggling the axis doesn't replay the intro sweep
+            replaceMerge={["series"]}
             style={{ height: "100%", width: "100%" }}
             opts={{ renderer: "svg" }}
           />
@@ -493,6 +563,45 @@ interface GroupedRateData {
   rate: number;
   reading_count: number;
   dataPoints: number;
+}
+
+function calculateTrendline(data: GroupedRateData[]): number[] {
+  const n = data.length;
+  if (n < 2) {
+    return data.map((d) => d.rate);
+  }
+
+  // Filter out zero-rate days (meter/pump outages) from regression calculation
+  const validPoints = data
+    .map((d, i) => ({ index: i, rate: d.rate }))
+    .filter((p) => p.rate > 0);
+
+  // If no valid points or only one, return flat line at average of valid rates
+  if (validPoints.length < 2) {
+    const avgRate = validPoints.length > 0 ? validPoints[0].rate : 0;
+    return data.map(() => avgRate);
+  }
+
+  // Calculate means using only valid (non-zero) points
+  const xMean = validPoints.reduce((a, p) => a + p.index, 0) / validPoints.length;
+  const yMean = validPoints.reduce((a, p) => a + p.rate, 0) / validPoints.length;
+
+  // Calculate slope and intercept using least squares on valid points
+  let numerator = 0;
+  let denominator = 0;
+
+  for (const point of validPoints) {
+    const xDiff = point.index - xMean;
+    const yDiff = point.rate - yMean;
+    numerator += xDiff * yDiff;
+    denominator += xDiff * xDiff;
+  }
+
+  const slope = denominator !== 0 ? numerator / denominator : 0;
+  const intercept = yMean - slope * xMean;
+
+  // Generate trendline values for ALL positions (including zeros for visual continuity)
+  return data.map((_, i) => Math.max(0, slope * i + intercept));
 }
 
 function getGroupingMode(startDate: Date, endDate: Date): GroupingMode {
