@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   requireEditor,
@@ -283,20 +284,24 @@ export async function createLogPost(input: {
 
   const authorName = authorData?.full_name || authorData?.email || "Unknown";
 
-  // Extract title from content (first line or first 50 chars)
-  const contentLines = parsed.data.content.split("\n");
-  const firstLine = contentLines[0].replace(/^#*\s*/, "").trim();
-  const title = firstLine.length > 50 ? firstLine.slice(0, 50) + "..." : firstLine;
-
-  // Send notifications asynchronously (don't block the response)
-  notifyNewLogPost({
-    id: data.id,
-    title,
-    content: parsed.data.content,
-    createdBy: authorName,
-    createdAt: insertData.created_at || new Date().toISOString(),
-  }).catch((err) => {
-    console.error("Error sending log post notifications:", err);
+  // Send notifications after the response. after() keeps the serverless
+  // function alive until they finish; a bare un-awaited promise can be
+  // frozen mid-send once the response is returned.
+  after(async () => {
+    try {
+      const result = await notifyNewLogPost({
+        id: data.id,
+        content: parsed.data.content,
+        authorId,
+        authorName,
+        createdAt: insertData.created_at || new Date().toISOString(),
+      });
+      if (result.errors.length > 0) {
+        console.error("Errors sending log post notifications:", result.errors);
+      }
+    } catch (err) {
+      console.error("Error sending log post notifications:", err);
+    }
   });
 
   revalidatePath("/dashboard/log");

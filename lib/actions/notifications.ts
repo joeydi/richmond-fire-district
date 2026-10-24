@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/roles";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { sendTestEmail } from "@/lib/services/notifications";
 import type { NotificationPreferences, DigestFrequency } from "@/lib/types/database";
 
 // Validation schema for notification preferences
@@ -82,6 +83,9 @@ export async function getDefaultPreferences(userId: string): Promise<Omit<Notifi
     digest_enabled: false,
     digest_frequency: "daily" as DigestFrequency,
     digest_email: true,
+
+    last_meter_alert_at: null,
+    last_chlorine_alert_at: null,
   };
 }
 
@@ -139,4 +143,12 @@ export async function updateNotificationPreferences(
 
   revalidatePath("/dashboard/notifications");
   return { success: true };
+}
+
+/**
+ * Send a test email to the current user's account address
+ */
+export async function sendTestNotification(): Promise<{ success: boolean; error?: string }> {
+  const user = await requireAuth();
+  return sendTestEmail(user.email, user.full_name);
 }

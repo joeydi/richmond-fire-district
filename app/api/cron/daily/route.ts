@@ -1,47 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isCronAuthorized } from "@/lib/auth/cron";
 import {
   checkAndNotifyMissingReadings,
   sendDigestEmails,
 } from "@/lib/services/notifications";
 
 /**
- * Verify Vercel Cron authorization
- * Vercel sends CRON_SECRET in the Authorization header
- */
-function isAuthorized(request: NextRequest): boolean {
-  const authHeader = request.headers.get("authorization");
-
-  // Check for Vercel's CRON_SECRET
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    return true;
-  }
-
-  // Fallback to NOTIFICATION_API_SECRET for manual triggers
-  const apiSecret = process.env.NOTIFICATION_API_SECRET;
-  if (apiSecret && authHeader === `Bearer ${apiSecret}`) {
-    return true;
-  }
-
-  // Allow in development without secret
-  if (!cronSecret && !apiSecret && process.env.NODE_ENV === "development") {
-    return true;
-  }
-
-  return false;
-}
-
-/**
  * GET /api/cron/daily
  *
- * Daily cron job that runs at 8am:
+ * Daily cron job at 12:00 UTC (7am EST / 8am EDT):
  * - Checks for missing readings and sends alerts
  * - Sends daily digest emails to subscribed users
  *
- * Configured in vercel.json with schedule "0 8 * * *"
+ * Configured in vercel.json with schedule "0 12 * * *"
  */
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -74,9 +48,16 @@ export async function GET(request: NextRequest) {
     results.missingReadings.errors.length > 0 ||
     results.dailyDigest.errors.length > 0;
 
-  return NextResponse.json({
-    success: !hasErrors,
-    timestamp: new Date().toISOString(),
-    results,
-  });
+  if (hasErrors) {
+    console.error("Daily cron finished with errors:", results);
+  }
+
+  return NextResponse.json(
+    {
+      success: !hasErrors,
+      timestamp: new Date().toISOString(),
+      results,
+    },
+    { status: hasErrors ? 500 : 200 }
+  );
 }

@@ -276,24 +276,34 @@ instances verify sessions without fetching them, see `lib/supabase/jwks.ts`):
 SUPABASE_JWKS={"keys":[...]}
 ```
 
-Optional for notifications (email/SMS):
+Optional for email notifications:
 ```
-# SendGrid (email notifications)
+# SendGrid. The from address must be on a domain authenticated in SendGrid
 SENDGRID_API_KEY=
-SENDGRID_FROM_EMAIL=noreply@example.com
+SENDGRID_FROM_EMAIL=notifications@your-domain.org
 SENDGRID_FROM_NAME=Richmond Fire District
-
-# Twilio (SMS notifications)
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_FROM_NUMBER=+1234567890
 
 # Vercel Cron authentication (set in Vercel dashboard)
 CRON_SECRET=your-vercel-cron-secret
-
-# API authentication for manual triggers
-NOTIFICATION_API_SECRET=your-secret-key
 ```
+
+## Notifications
+
+- `lib/services/notifications.ts` decides who gets what and builds the data;
+  `lib/services/email.ts` renders a template and sends it through SendGrid.
+- It runs from cron jobs and `after()` callbacks with no user session and reads
+  every user's preferences, so it **must use `createAdminClient()`**. With the
+  cookie client, RLS hides every row but the caller's own.
+- Templates are React Email components in `emails/` (`npm run email` previews
+  them). Each exports `PreviewProps` with sample data. Format dates with the
+  helpers in `emails/_components/format.ts`, which pin them to America/New_York.
+- New log post emails go out from `createLogPost` through `after()`. They skip
+  the author.
+- Missing reading alerts send once per gap: `last_*_alert_at` records the send,
+  and the next alert waits for a newer reading. Interpolated readings don't
+  count as readings.
+- SMS (`lib/services/sms.ts`, the `*_sms` and `phone_number` columns) is not
+  wired up and is hidden in the UI until Twilio's US carrier registration is done.
 
 ## Vercel Cron Jobs
 
@@ -301,25 +311,11 @@ Cron jobs are configured in `vercel.json` and run automatically on Vercel:
 
 | Schedule | Endpoint | Description |
 |----------|----------|-------------|
-| Daily 8am UTC | `/api/cron/daily` | Check missing readings + send daily digests |
-| Monday 8am UTC | `/api/cron/weekly` | Send weekly digest emails |
+| Daily 12:00 UTC | `/api/cron/daily` | Missing reading alerts + daily digests |
+| Monday 12:00 UTC | `/api/cron/weekly` | Weekly digests |
 
-To enable:
-1. Add `CRON_SECRET` environment variable in Vercel dashboard
-2. Deploy to Vercel (crons auto-configure from vercel.json)
-
-## Notification API Endpoints
-
-The following API endpoints can be called by cron jobs or webhooks:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/notifications/log-post` | POST | Notify users of new log posts (called automatically) |
-| `/api/notifications/check-readings` | POST | Check for missing readings and alert users |
-| `/api/notifications/digest?frequency=daily` | POST | Send daily digest emails |
-| `/api/notifications/digest?frequency=weekly` | POST | Send weekly digest emails |
-
-All endpoints require `Authorization: Bearer {NOTIFICATION_API_SECRET}` header.
+Both require `Authorization: Bearer {CRON_SECRET}` (checked by
+`lib/auth/cron.ts`); send that header to trigger one by hand.
 
 ## Adding New Features
 

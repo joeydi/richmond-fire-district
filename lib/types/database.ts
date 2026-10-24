@@ -142,6 +142,10 @@ export interface NotificationPreferences {
   digest_frequency: DigestFrequency;
   digest_email: boolean;
 
+  // Set by the daily cron when it sends a missing reading alert
+  last_meter_alert_at: string | null;
+  last_chlorine_alert_at: string | null;
+
   created_at: string;
   updated_at: string;
 }

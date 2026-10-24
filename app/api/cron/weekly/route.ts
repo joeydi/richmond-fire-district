@@ -1,55 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isCronAuthorized } from "@/lib/auth/cron";
 import { sendDigestEmails } from "@/lib/services/notifications";
-
-/**
- * Verify Vercel Cron authorization
- * Vercel sends CRON_SECRET in the Authorization header
- */
-function isAuthorized(request: NextRequest): boolean {
-  const authHeader = request.headers.get("authorization");
-
-  // Check for Vercel's CRON_SECRET
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    return true;
-  }
-
-  // Fallback to NOTIFICATION_API_SECRET for manual triggers
-  const apiSecret = process.env.NOTIFICATION_API_SECRET;
-  if (apiSecret && authHeader === `Bearer ${apiSecret}`) {
-    return true;
-  }
-
-  // Allow in development without secret
-  if (!cronSecret && !apiSecret && process.env.NODE_ENV === "development") {
-    return true;
-  }
-
-  return false;
-}
 
 /**
  * GET /api/cron/weekly
  *
- * Weekly cron job that runs every Monday at 8am:
+ * Weekly cron job every Monday at 12:00 UTC (7am EST / 8am EDT):
  * - Sends weekly digest emails to subscribed users
  *
- * Configured in vercel.json with schedule "0 8 * * 1"
+ * Configured in vercel.json with schedule "0 12 * * 1"
  */
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     const result = await sendDigestEmails("weekly");
+    const hasErrors = result.errors.length > 0;
 
-    return NextResponse.json({
-      success: result.errors.length === 0,
-      timestamp: new Date().toISOString(),
-      emailsSent: result.sent,
-      errors: result.errors.length > 0 ? result.errors : undefined,
-    });
+    if (hasErrors) {
+      console.error("Weekly cron finished with errors:", result.errors);
+    }
+
+    return NextResponse.json(
+      {
+        success: !hasErrors,
+        timestamp: new Date().toISOString(),
+        emailsSent: result.sent,
+        errors: hasErrors ? result.errors : undefined,
+      },
+      { status: hasErrors ? 500 : 200 }
+    );
   } catch (error) {
     console.error("Error in weekly cron:", error);
     return NextResponse.json(

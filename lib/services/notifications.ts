@@ -1,397 +1,393 @@
-import { createClient } from "@/lib/supabase/server";
-import {
-  sendNewLogPostEmail,
-  sendMissingReadingEmail,
-  sendDigestEmail,
-} from "./email";
-import {
-  sendNewLogPostSms,
-  sendMissingReadingSms,
-} from "./sms";
+import { createElement } from "react";
+import { createAdminClient } from "@/lib/supabase/server";
+import { APP_URL, sendEmail, type EmailResult } from "./email";
+import { NewLogPostEmail } from "@/emails/new-log-post";
+import { MissingReadingEmail, missingReadingSubject, type MissingReadingType } from "@/emails/missing-reading";
+import { DigestEmail, digestSubject, type DigestEmailProps } from "@/emails/digest";
+import { TestEmail } from "@/emails/test-email";
 import type { NotificationPreferences } from "@/lib/types/database";
 
-interface UserWithPreferences {
-  id: string;
+// SMS (lib/services/sms.ts) is not wired up yet: Twilio needs A2P 10DLC or
+// toll-free verification before it can text US numbers. Only email is sent.
+
+// These run from cron jobs and after() callbacks with no user session, and
+// they read every user's preferences, so they need the service role client.
+// RLS would otherwise hide every row but the caller's own.
+
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+interface Recipient {
   email: string;
-  full_name: string | null;
+  fullName: string | null;
   preferences: NotificationPreferences;
 }
 
+type PreferenceRow = NotificationPreferences & {
+  profiles: { email: string; full_name: string | null } | null;
+};
+
 /**
- * Get all users with notification preferences enabled for a specific type
+ * Get users who have turned on an alert and its email channel
  */
-async function getUsersWithPreference(
-  preferenceField: keyof NotificationPreferences
-): Promise<UserWithPreferences[]> {
-  const supabase = await createClient();
+async function getEmailRecipients(
+  enabledField: keyof NotificationPreferences,
+  emailField: keyof NotificationPreferences
+): Promise<Recipient[]> {
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from("notification_preferences")
-    .select(`
-      *,
-      profiles:user_id (
-        id,
-        email,
-        full_name
-      )
-    `)
-    .eq(preferenceField, true);
+    .select("*, profiles:user_id (email, full_name)")
+    .eq(enabledField, true)
+    .eq(emailField, true);
 
   if (error) {
-    console.error("Error fetching users with preferences:", error);
-    return [];
+    throw new Error(`Error fetching notification recipients: ${error.message}`);
   }
 
-  return (data ?? [])
-    .filter((row) => row.profiles)
-    .map((row) => ({
-      id: row.profiles.id,
-      email: row.profiles.email,
-      full_name: row.profiles.full_name,
-      preferences: row as NotificationPreferences,
+  return ((data ?? []) as unknown as PreferenceRow[])
+    .filter((row) => row.profiles?.email)
+    .map(({ profiles, ...preferences }) => ({
+      email: profiles!.email,
+      fullName: profiles!.full_name,
+      preferences,
     }));
 }
 
 /**
- * Notify all subscribed users about a new log post
+ * A one-line title for a markdown log post: its first line, stripped of
+ * heading and emphasis markers
  */
-export async function notifyNewLogPost(logPost: {
-  id: string;
-  title: string;
-  content: string;
-  createdBy: string;
-  createdAt: string;
-}): Promise<{ emailsSent: number; smsSent: number; errors: string[] }> {
-  const results = { emailsSent: 0, smsSent: 0, errors: [] as string[] };
+export function logPostTitle(content: string): string {
+  const firstLine =
+    content
+      .split("\n")
+      .map((line) => line.replace(/^[#>\-*+\s]+/, "").replace(/[*_`~]|\[|\]\([^)]*\)|\]/g, "").trim())
+      .find(Boolean) ?? "Untitled post";
+  return firstLine.length > 60 ? `${firstLine.slice(0, 60).trimEnd()}…` : firstLine;
+}
 
-  const users = await getUsersWithPreference("notify_new_log_posts");
-
-  for (const user of users) {
-    // Send email if enabled
-    if (user.preferences.notify_new_log_posts_email) {
-      const result = await sendNewLogPostEmail(user.email, {
-        title: logPost.title,
-        content: logPost.content,
-        createdBy: logPost.createdBy,
-        createdAt: logPost.createdAt,
-      });
-
-      if (result.success) {
-        results.emailsSent++;
-      } else if (result.error) {
-        results.errors.push(`Email to ${user.email}: ${result.error}`);
-      }
-    }
-
-    // Send SMS if enabled and phone number is set
-    if (
-      user.preferences.notify_new_log_posts_sms &&
-      user.preferences.phone_number
-    ) {
-      const result = await sendNewLogPostSms(user.preferences.phone_number, {
-        title: logPost.title,
-        createdBy: logPost.createdBy,
-      });
-
-      if (result.success) {
-        results.smsSent++;
-      } else if (result.error) {
-        results.errors.push(`SMS to ${user.preferences.phone_number}: ${result.error}`);
-      }
-    }
-  }
-
-  return results;
+function tally(results: { email: string; result: EmailResult }[]) {
+  return {
+    sent: results.filter((r) => r.result.success).length,
+    errors: results.filter((r) => !r.result.success).map((r) => `${r.email}: ${r.result.error}`),
+  };
 }
 
 /**
- * Check for missing readings and notify subscribed users
+ * Email everyone subscribed to new log posts, except the author
+ */
+export async function notifyNewLogPost(logPost: {
+  id: string;
+  content: string;
+  authorId: string | null;
+  authorName: string;
+  createdAt: string;
+}): Promise<{ sent: number; errors: string[] }> {
+  const recipients = await getEmailRecipients("notify_new_log_posts", "notify_new_log_posts_email");
+  const title = logPostTitle(logPost.content);
+
+  const results = await Promise.all(
+    recipients
+      .filter((user) => user.preferences.user_id !== logPost.authorId)
+      .map(async (user) => ({
+        email: user.email,
+        result: await sendEmail(
+          user.email,
+          `${logPost.authorName} posted to the log: ${title}`,
+          createElement(NewLogPostEmail, {
+            appUrl: APP_URL,
+            postId: logPost.id,
+            title,
+            content: logPost.content,
+            authorName: logPost.authorName,
+            createdAt: logPost.createdAt,
+          })
+        ),
+      }))
+  );
+
+  return tally(results);
+}
+
+const MISSING_READING_CONFIG = {
+  meter: {
+    table: "meter_readings",
+    enabled: "notify_missing_meter_readings",
+    email: "notify_missing_meter_readings_email",
+    threshold: "missing_meter_reading_days",
+    lastAlert: "last_meter_alert_at",
+  },
+  chlorine: {
+    table: "chlorine_readings",
+    enabled: "notify_missing_chlorine_readings",
+    email: "notify_missing_chlorine_readings_email",
+    threshold: "missing_chlorine_reading_days",
+    lastAlert: "last_chlorine_alert_at",
+  },
+} as const;
+
+async function notifyMissingReading(readingType: MissingReadingType): Promise<{ sent: number; errors: string[] }> {
+  const config = MISSING_READING_CONFIG[readingType];
+  const supabase = createAdminClient();
+
+  // Interpolated rows are estimates filled in during imports, not readings
+  // someone took, so they don't count as the last reading
+  const { data: latest, error } = await supabase
+    .from(config.table)
+    .select("recorded_at")
+    .eq("interpolated", false)
+    .order("recorded_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Error fetching latest ${readingType} reading: ${error.message}`);
+  }
+
+  const lastReadingAt: string | null = latest?.recorded_at ?? null;
+  const daysSinceLastReading = lastReadingAt
+    ? Math.floor((Date.now() - new Date(lastReadingAt).getTime()) / DAY_MS)
+    : null;
+
+  const recipients = await getEmailRecipients(config.enabled, config.email);
+
+  const due = recipients.filter((user) => {
+    if (daysSinceLastReading !== null && daysSinceLastReading < user.preferences[config.threshold]) {
+      return false;
+    }
+    // One alert per gap: skip anyone already alerted since the last reading
+    const lastAlert = user.preferences[config.lastAlert];
+    return !lastAlert || (lastReadingAt !== null && new Date(lastAlert) < new Date(lastReadingAt));
+  });
+
+  const results = await Promise.all(
+    due.map(async (user) => {
+      const props = {
+        appUrl: APP_URL,
+        readingType,
+        lastReadingAt,
+        daysSinceLastReading,
+        thresholdDays: user.preferences[config.threshold],
+      };
+      const result = await sendEmail(user.email, missingReadingSubject(props), createElement(MissingReadingEmail, props));
+
+      if (result.success) {
+        const { error: updateError } = await supabase
+          .from("notification_preferences")
+          .update({ [config.lastAlert]: new Date().toISOString() })
+          .eq("user_id", user.preferences.user_id);
+        if (updateError) {
+          console.error(`Error recording ${readingType} alert for ${user.email}:`, updateError);
+        }
+      }
+
+      return { email: user.email, result };
+    })
+  );
+
+  return tally(results);
+}
+
+/**
+ * Check for missing meter and chlorine readings and alert subscribed users
  */
 export async function checkAndNotifyMissingReadings(): Promise<{
   meterAlerts: number;
   chlorineAlerts: number;
   errors: string[];
 }> {
-  const results = { meterAlerts: 0, chlorineAlerts: 0, errors: [] as string[] };
-  const supabase = await createClient();
+  const [meter, chlorine] = await Promise.all([notifyMissingReading("meter"), notifyMissingReading("chlorine")]);
 
-  // Get the latest meter reading date
-  const { data: latestMeterReading } = await supabase
-    .from("meter_readings")
-    .select("recorded_at")
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  // Get the latest chlorine reading date
-  const { data: latestChlorineReading } = await supabase
-    .from("chlorine_readings")
-    .select("recorded_at")
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  const now = new Date();
-
-  // Calculate days since last readings
-  const daysSinceMeterReading = latestMeterReading
-    ? Math.floor(
-        (now.getTime() - new Date(latestMeterReading.recorded_at).getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
-    : Infinity;
-
-  const daysSinceChlorineReading = latestChlorineReading
-    ? Math.floor(
-        (now.getTime() - new Date(latestChlorineReading.recorded_at).getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
-    : Infinity;
-
-  // Get users subscribed to meter reading alerts
-  const meterUsers = await getUsersWithPreference("notify_missing_meter_readings");
-
-  for (const user of meterUsers) {
-    if (daysSinceMeterReading >= user.preferences.missing_meter_reading_days) {
-      // Send email if enabled
-      if (user.preferences.notify_missing_meter_readings_email) {
-        const result = await sendMissingReadingEmail(
-          user.email,
-          "meter",
-          daysSinceMeterReading
-        );
-
-        if (result.success) {
-          results.meterAlerts++;
-        } else if (result.error) {
-          results.errors.push(`Meter email to ${user.email}: ${result.error}`);
-        }
-      }
-
-      // Send SMS if enabled
-      if (
-        user.preferences.notify_missing_meter_readings_sms &&
-        user.preferences.phone_number
-      ) {
-        const result = await sendMissingReadingSms(
-          user.preferences.phone_number,
-          "meter",
-          daysSinceMeterReading
-        );
-
-        if (result.success) {
-          results.meterAlerts++;
-        } else if (result.error) {
-          results.errors.push(`Meter SMS: ${result.error}`);
-        }
-      }
-    }
-  }
-
-  // Get users subscribed to chlorine reading alerts
-  const chlorineUsers = await getUsersWithPreference("notify_missing_chlorine_readings");
-
-  for (const user of chlorineUsers) {
-    if (daysSinceChlorineReading >= user.preferences.missing_chlorine_reading_days) {
-      // Send email if enabled
-      if (user.preferences.notify_missing_chlorine_readings_email) {
-        const result = await sendMissingReadingEmail(
-          user.email,
-          "chlorine",
-          daysSinceChlorineReading
-        );
-
-        if (result.success) {
-          results.chlorineAlerts++;
-        } else if (result.error) {
-          results.errors.push(`Chlorine email to ${user.email}: ${result.error}`);
-        }
-      }
-
-      // Send SMS if enabled
-      if (
-        user.preferences.notify_missing_chlorine_readings_sms &&
-        user.preferences.phone_number
-      ) {
-        const result = await sendMissingReadingSms(
-          user.preferences.phone_number,
-          "chlorine",
-          daysSinceChlorineReading
-        );
-
-        if (result.success) {
-          results.chlorineAlerts++;
-        } else if (result.error) {
-          results.errors.push(`Chlorine SMS: ${result.error}`);
-        }
-      }
-    }
-  }
-
-  return results;
+  return {
+    meterAlerts: meter.sent,
+    chlorineAlerts: chlorine.sent,
+    errors: [...meter.errors, ...chlorine.errors],
+  };
 }
 
+type MeterReadingRow = { meter_id: string | null; reading_value: number; recorded_at: string };
+
 /**
- * Send digest emails to subscribed users
+ * Gallons produced across all meters in a period. Meter readings are
+ * cumulative, so each meter's production is its last reading in the period
+ * minus its last reading before it (or its first reading in the period when
+ * there's none before). Returns null when no meter has two readings to compare.
  */
-export async function sendDigestEmails(
-  frequency: "daily" | "weekly"
-): Promise<{ sent: number; errors: string[] }> {
-  const results = { sent: 0, errors: [] as string[] };
-  const supabase = await createClient();
+async function getProduction(start: Date, end: Date): Promise<DigestEmailProps["production"]> {
+  const supabase = createAdminClient();
 
-  // Get users with digest enabled for this frequency
-  const { data: users, error: usersError } = await supabase
-    .from("notification_preferences")
-    .select(`
-      *,
-      profiles:user_id (
-        id,
-        email,
-        full_name
-      )
-    `)
-    .eq("digest_enabled", true)
-    .eq("digest_frequency", frequency)
-    .eq("digest_email", true);
-
-  if (usersError || !users?.length) {
-    return results;
-  }
-
-  // Get stats
-  const [
-    { count: totalMeters },
-    { count: totalReservoirs },
-    { count: totalHydrants },
-  ] = await Promise.all([
-    supabase.from("meters").select("*", { count: "exact", head: true }),
-    supabase.from("reservoirs").select("*", { count: "exact", head: true }),
+  const [{ data: before }, { data: during }] = await Promise.all([
+    // Baseline per meter: the most recent reading before the period
     supabase
-      .from("infrastructure_points")
-      .select("*", { count: "exact", head: true })
-      .eq("type", "hydrant"),
+      .from("meter_readings")
+      .select("meter_id, reading_value, recorded_at")
+      .lt("recorded_at", start.toISOString())
+      .order("recorded_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("meter_readings")
+      .select("meter_id, reading_value, recorded_at")
+      .gte("recorded_at", start.toISOString())
+      .lte("recorded_at", end.toISOString())
+      .order("recorded_at", { ascending: true })
+      .limit(5000),
   ]);
 
-  // Get date range for readings
-  const dateThreshold = new Date();
-  dateThreshold.setDate(dateThreshold.getDate() - (frequency === "daily" ? 1 : 7));
+  const byMeter = new Map<string, { first?: MeterReadingRow; last?: MeterReadingRow }>();
+  for (const row of (before ?? []) as MeterReadingRow[]) {
+    if (row.meter_id && !byMeter.has(row.meter_id)) byMeter.set(row.meter_id, { first: row });
+  }
+  for (const row of (during ?? []) as MeterReadingRow[]) {
+    if (!row.meter_id) continue;
+    const entry = byMeter.get(row.meter_id) ?? {};
+    entry.first ??= row;
+    entry.last = row;
+    byMeter.set(row.meter_id, entry);
+  }
 
-  // Get recent readings count
-  const { count: recentReadings } = await supabase
-    .from("meter_readings")
-    .select("*", { count: "exact", head: true })
-    .gte("recorded_at", dateThreshold.toISOString());
+  let totalGallons = 0;
+  let spanMs = 0;
+  let measured = false;
+  for (const { first, last } of byMeter.values()) {
+    if (!first || !last || first === last) continue;
+    totalGallons += last.reading_value - first.reading_value;
+    spanMs = Math.max(spanMs, new Date(last.recorded_at).getTime() - new Date(first.recorded_at).getTime());
+    measured = true;
+  }
 
-  // Get latest meter readings
-  const { data: meterReadings } = await supabase
-    .from("meter_readings")
-    .select(`
-      reading_value,
-      recorded_at,
-      meters:meter_id (name)
-    `)
-    .order("recorded_at", { ascending: false })
-    .limit(5);
+  if (!measured) return { totalGallons: null, averageDailyGallons: null };
+  return {
+    totalGallons,
+    averageDailyGallons: spanMs > 0 ? totalGallons / (spanMs / DAY_MS) : null,
+  };
+}
 
-  // Get latest chlorine readings
-  const { data: chlorineReadings } = await supabase
-    .from("chlorine_readings")
-    .select(`
-      free_chlorine,
-      recorded_at,
-      infrastructure_points:location_id (name)
-    `)
-    .order("recorded_at", { ascending: false })
-    .limit(5);
+export async function buildDigest(frequency: "daily" | "weekly"): Promise<DigestEmailProps> {
+  const supabase = createAdminClient();
+  const periodEnd = new Date();
+  const periodStart = new Date(periodEnd.getTime() - (frequency === "daily" ? 1 : 7) * DAY_MS);
+  const since = periodStart.toISOString();
 
-  // Get latest reservoir readings
-  const { data: reservoirReadings } = await supabase
-    .from("reservoir_readings")
-    .select(`
-      level_percentage,
-      recorded_at,
-      reservoirs:reservoir_id (name)
-    `)
-    .order("recorded_at", { ascending: false })
-    .limit(5);
+  const count = (table: string, excludeInterpolated: boolean) => {
+    let query = supabase.from(table).select("*", { count: "exact", head: true }).gte("recorded_at", since);
+    if (excludeInterpolated) query = query.eq("interpolated", false);
+    return query;
+  };
 
-  // Get recent log posts
-  const { data: logPosts } = await supabase
-    .from("log_posts")
-    .select(`
-      title,
-      created_at,
-      profiles:created_by (full_name, email)
-    `)
-    .gte("created_at", dateThreshold.toISOString())
-    .order("created_at", { ascending: false })
-    .limit(10);
+  const [
+    production,
+    { count: meterCount },
+    { count: chlorineCount },
+    { count: reservoirCount },
+    { data: chlorine, error: chlorineError },
+    { data: reservoirReadings, error: reservoirError },
+    { data: logPosts, error: logError },
+  ] = await Promise.all([
+    getProduction(periodStart, periodEnd),
+    count("meter_readings", true),
+    count("chlorine_readings", true),
+    count("reservoir_readings", false),
+    supabase
+      .from("chlorine_readings")
+      .select("residual_level, recorded_at, infrastructure_points:location_id (name)")
+      .eq("interpolated", false)
+      .gte("recorded_at", since)
+      .order("recorded_at", { ascending: false })
+      .limit(10),
+    // Recent readings across reservoirs; reduced to the latest per reservoir below
+    supabase
+      .from("reservoir_readings")
+      .select("reservoir_id, level_inches, recorded_at, reservoirs:reservoir_id (name, max_level_inches)")
+      .order("recorded_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("log_posts")
+      .select("id, content, created_at, profiles:author_id (full_name, email)")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(10),
+  ]);
 
-  // Prepare digest data
-  // Note: Supabase returns relations as single objects for foreign keys
-  type RelatedMeter = { name: string } | null;
-  type RelatedPoint = { name: string } | null;
-  type RelatedReservoir = { name: string } | null;
-  type RelatedProfile = { full_name: string | null; email: string } | null;
+  const queryError = chlorineError ?? reservoirError ?? logError;
+  if (queryError) {
+    throw new Error(`Error building ${frequency} digest: ${queryError.message}`);
+  }
 
-  const digestData = {
-    stats: {
-      totalMeters: totalMeters ?? 0,
-      totalReservoirs: totalReservoirs ?? 0,
-      totalHydrants: totalHydrants ?? 0,
-      recentReadings: recentReadings ?? 0,
-    },
-    latestMeterReadings: (meterReadings ?? []).map((r) => {
-      const meter = r.meters as unknown as RelatedMeter;
+  // Supabase types to-one relations as arrays without generated types
+  type Named = { name: string } | null;
+  type Reservoir = { name: string; max_level_inches: number | null } | null;
+  type Author = { full_name: string | null; email: string } | null;
+
+  const latestByReservoir = new Map<string, DigestEmailProps["reservoirs"][number]>();
+  for (const r of reservoirReadings ?? []) {
+    if (!r.reservoir_id || latestByReservoir.has(r.reservoir_id)) continue;
+    const reservoir = r.reservoirs as unknown as Reservoir;
+    latestByReservoir.set(r.reservoir_id, {
+      name: reservoir?.name ?? "Reservoir",
+      levelInches: r.level_inches,
+      maxLevelInches: reservoir?.max_level_inches ?? null,
+      recordedAt: r.recorded_at,
+    });
+  }
+
+  return {
+    appUrl: APP_URL,
+    frequency,
+    periodStart: periodStart.toISOString(),
+    periodEnd: periodEnd.toISOString(),
+    production,
+    readingCounts: { meter: meterCount ?? 0, chlorine: chlorineCount ?? 0, reservoir: reservoirCount ?? 0 },
+    chlorineReadings: (chlorine ?? []).map((r) => ({
+      location: (r.infrastructure_points as unknown as Named)?.name ?? "Unknown location",
+      level: r.residual_level,
+      recordedAt: r.recorded_at,
+    })),
+    reservoirs: [...latestByReservoir.values()],
+    logPosts: (logPosts ?? []).map((p) => {
+      const author = p.profiles as unknown as Author;
       return {
-        meterName: meter?.name ?? "Unknown",
-        value: r.reading_value,
-        recordedAt: r.recorded_at,
-      };
-    }),
-    latestChlorineReadings: (chlorineReadings ?? []).map((r) => {
-      const point = r.infrastructure_points as unknown as RelatedPoint;
-      return {
-        location: point?.name ?? "Unknown",
-        value: r.free_chlorine,
-        recordedAt: r.recorded_at,
-      };
-    }),
-    latestReservoirReadings: (reservoirReadings ?? []).map((r) => {
-      const reservoir = r.reservoirs as unknown as RelatedReservoir;
-      return {
-        reservoirName: reservoir?.name ?? "Unknown",
-        level: r.level_percentage,
-        recordedAt: r.recorded_at,
-      };
-    }),
-    recentLogPosts: (logPosts ?? []).map((p) => {
-      const author = p.profiles as unknown as RelatedProfile;
-      return {
-        title: p.title,
-        createdBy: author?.full_name ?? author?.email ?? "Unknown",
+        id: p.id,
+        title: logPostTitle(p.content),
+        authorName: author?.full_name || author?.email || "Unknown",
         createdAt: p.created_at,
       };
     }),
   };
+}
 
-  // Send to each user
-  for (const user of users) {
-    if (!user.profiles?.email) continue;
+/**
+ * Send digest emails to users subscribed at this frequency
+ */
+export async function sendDigestEmails(frequency: "daily" | "weekly"): Promise<{ sent: number; errors: string[] }> {
+  const recipients = (await getEmailRecipients("digest_enabled", "digest_email")).filter(
+    (user) => user.preferences.digest_frequency === frequency
+  );
 
-    const result = await sendDigestEmail(
-      user.profiles.email,
-      frequency,
-      digestData
-    );
-
-    if (result.success) {
-      results.sent++;
-    } else if (result.error) {
-      results.errors.push(`Digest to ${user.profiles.email}: ${result.error}`);
-    }
+  if (recipients.length === 0) {
+    return { sent: 0, errors: [] };
   }
 
-  return results;
+  const digest = await buildDigest(frequency);
+  const subject = digestSubject(digest);
+
+  const results = await Promise.all(
+    recipients.map(async (user) => ({
+      email: user.email,
+      result: await sendEmail(user.email, subject, createElement(DigestEmail, digest)),
+    }))
+  );
+
+  return tally(results);
+}
+
+/**
+ * Send a test email so a user can confirm delivery
+ */
+export async function sendTestEmail(to: string, recipientName: string | null): Promise<EmailResult> {
+  return sendEmail(
+    to,
+    "Test email from Richmond Fire District",
+    createElement(TestEmail, { appUrl: APP_URL, recipientName })
+  );
 }

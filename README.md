@@ -57,15 +57,13 @@ SUPABASE_SECRET_KEY=your-secret-key
 # Copy the JSON from {NEXT_PUBLIC_SUPABASE_URL}/auth/v1/.well-known/jwks.json
 SUPABASE_JWKS={"keys":[...]}
 
-# Optional - Notifications
+# Optional - Email notifications
+# The from address must be on a domain authenticated in SendGrid, not a
+# gmail.com or similar address, or receiving servers will reject or spam it
 SENDGRID_API_KEY=your-sendgrid-api-key
-SENDGRID_FROM_EMAIL=noreply@example.com
+SENDGRID_FROM_EMAIL=notifications@your-domain.org
 SENDGRID_FROM_NAME=Richmond Fire District
-TWILIO_ACCOUNT_SID=your-twilio-account-sid
-TWILIO_AUTH_TOKEN=your-twilio-auth-token
-TWILIO_FROM_NUMBER=+1234567890
 CRON_SECRET=your-vercel-cron-secret
-NOTIFICATION_API_SECRET=your-notification-api-secret
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SECRET_KEY` both bypass row-level security. Keep them server-side and never prefix them with `NEXT_PUBLIC_`.
@@ -201,19 +199,26 @@ Cron jobs are configured in `vercel.json` and need `CRON_SECRET` set in Vercel:
 
 | Schedule | Endpoint | Description |
 |----------|----------|-------------|
-| Daily 8am UTC | `/api/cron/daily` | Check missing readings + daily digests |
-| Monday 8am UTC | `/api/cron/weekly` | Weekly digest emails |
+| Daily 12:00 UTC (7–8am Eastern) | `/api/cron/daily` | Missing reading alerts + daily digests |
+| Monday 12:00 UTC | `/api/cron/weekly` | Weekly digests |
 
-### Notification API
+To run a job by hand, send the same header Vercel does:
 
-These endpoints can also be called by hand or by webhooks. All of them require an `Authorization: Bearer {NOTIFICATION_API_SECRET}` header.
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://richmond-fire-district.vercel.app/api/cron/daily
+```
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/notifications/log-post` | POST | Notify users of a new log post (called automatically) |
-| `/api/notifications/check-readings` | POST | Alert users about missing readings |
-| `/api/notifications/digest?frequency=daily` | POST | Send daily digest emails |
-| `/api/notifications/digest?frequency=weekly` | POST | Send weekly digest emails |
+### Notifications
+
+Notifications are email only for now. Users choose them at `/dashboard/notifications`, which also has a button that sends a test email. New log posts are emailed when they're created, and missing reading alerts and digests go out from the cron jobs. Each gap in readings gets one missing reading alert rather than one every day.
+
+Email templates are React Email components in `emails/`. To preview them with sample data:
+
+```bash
+npm run email
+```
+
+SMS through Twilio (`lib/services/sms.ts`) isn't wired up. Twilio can't text US numbers until the sending number has A2P 10DLC or toll-free verification.
 
 ## Documentation
 
