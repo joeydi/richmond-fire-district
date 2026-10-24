@@ -3,15 +3,19 @@
 import { format } from "date-fns";
 import {
   Document,
+  Font,
   Image,
   Page,
+  Path,
   StyleSheet,
+  Svg,
   Text,
   View,
 } from "@react-pdf/renderer";
 import {
   INFRASTRUCTURE_COLORS,
   INFRASTRUCTURE_STATUS_LABELS,
+  type InfrastructureStatus,
 } from "@/lib/types/infrastructure";
 import { REPORT_MAP_ASPECT_RATIO } from "@/lib/pdf/map-bounds";
 import type {
@@ -25,39 +29,116 @@ const PAGE_PADDING_X = 48;
 const CONTENT_WIDTH = 612 - PAGE_PADDING_X * 2;
 const ORGANIZATION = "Richmond Fire District #1 - WSID 5426";
 
-// react-pdf ships Helvetica; registering a web font would add a network fetch
-// that can fail while generating in the browser.
+// Colours are the Console design system's tokens, converted from oklch to
+// hex for react-pdf.
+const INK = "#18181b"; // foreground
+const MUTED = "#5a5a64"; // muted-foreground
+const FOOTNOTE = "#52525c"; // footnote (zinc-600)
+const BORDER = "#e4e4e7"; // border
+const SURFACE_MUTED = "#f4f4f5"; // muted
+const BRAND = "#0092b8"; // brand
+
+const STATUS_TONES: Record<InfrastructureStatus, { backgroundColor: string; color: string }> = {
+  active: { backgroundColor: "#f0fdf4", color: "#016630" }, // status-good
+  maintenance: { backgroundColor: "#fef3c6", color: "#973c00" }, // status-warning
+  inactive: { backgroundColor: SURFACE_MUTED, color: "#3f3f46" }, // status-neutral
+  unknown: { backgroundColor: SURFACE_MUTED, color: "#3f3f46" },
+};
+
+// Geist and Geist Mono, the design system's faces, served from public/fonts
+// on the app's own origin so generating the PDF needs no third-party fetch.
+const SANS = "Geist";
+const MONO = "Geist Mono";
+
+Font.register({
+  family: SANS,
+  fonts: [
+    { src: "/fonts/Geist-Regular.ttf", fontWeight: 400 },
+    { src: "/fonts/Geist-Medium.ttf", fontWeight: 500 },
+    { src: "/fonts/Geist-SemiBold.ttf", fontWeight: 600 },
+  ],
+});
+Font.register({
+  family: MONO,
+  fonts: [
+    { src: "/fonts/GeistMono-Regular.ttf", fontWeight: 400 },
+    { src: "/fonts/GeistMono-Medium.ttf", fontWeight: 500 },
+  ],
+});
+
+/** The design system's mono uppercase label (eyebrow) */
+const eyebrow = {
+  fontFamily: MONO,
+  fontSize: 7,
+  letterSpacing: 0.6,
+  textTransform: "uppercase" as const,
+  color: MUTED,
+};
+
 const styles = StyleSheet.create({
   page: {
     paddingTop: 48,
-    paddingBottom: 48,
+    paddingBottom: 56,
     paddingHorizontal: PAGE_PADDING_X,
-    fontFamily: "Helvetica",
+    fontFamily: SANS,
     fontSize: 10,
-    color: "#0f172a",
+    color: INK,
   },
   cover: {
     marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 2,
-    borderBottomColor: "#0f172a",
+  },
+  wordmark: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  wordmarkText: {
+    marginLeft: 5,
+    fontFamily: MONO,
+    fontWeight: 500,
+    fontSize: 8.5,
+    letterSpacing: 0.3,
   },
   coverOrg: {
-    fontSize: 10,
-    fontFamily: "Helvetica-Bold",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    color: "#64748b",
+    ...eyebrow,
   },
   coverTitle: {
-    marginTop: 6,
-    fontSize: 26,
-    fontFamily: "Helvetica-Bold",
+    marginTop: 4,
+    fontSize: 22,
+    fontFamily: SANS,
+    fontWeight: 600,
+    letterSpacing: -0.2,
   },
   coverMeta: {
-    marginTop: 10,
-    fontSize: 10,
-    color: "#475569",
+    marginTop: 6,
+    fontFamily: MONO,
+    fontSize: 8,
+    textTransform: "uppercase",
+    color: FOOTNOTE,
+  },
+  statBand: {
+    flexDirection: "row",
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 6,
+  },
+  statCell: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRightWidth: 1,
+    borderRightColor: BORDER,
+  },
+  statCellLast: {
+    borderRightWidth: 0,
+  },
+  statValue: {
+    marginTop: 3,
+    fontFamily: MONO,
+    fontWeight: 500,
+    fontSize: 16,
+    letterSpacing: -0.3,
   },
   mapImage: {
     width: CONTENT_WIDTH,
@@ -65,13 +146,14 @@ const styles = StyleSheet.create({
     height: CONTENT_WIDTH / REPORT_MAP_ASPECT_RATIO,
     objectFit: "cover",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 4,
+    borderColor: BORDER,
+    borderRadius: 6,
   },
   mapCredit: {
     marginTop: 4,
-    fontSize: 7,
-    color: "#94a3b8",
+    fontFamily: MONO,
+    fontSize: 6.5,
+    color: MUTED,
     textAlign: "right",
   },
   mapLegend: {
@@ -80,7 +162,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
+    borderTopColor: BORDER,
   },
   legendItem: {
     flexDirection: "row",
@@ -104,82 +186,97 @@ const styles = StyleSheet.create({
   },
   legendLabel: {
     fontSize: 9,
-    color: "#475569",
+    color: MUTED,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 18,
     marginBottom: 10,
-    paddingBottom: 5,
+    paddingBottom: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "#cbd5e1",
+    borderBottomColor: BORDER,
   },
   swatch: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     marginRight: 7,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontFamily: "Helvetica-Bold",
+    fontSize: 13,
+    fontFamily: SANS,
+    fontWeight: 600,
+    letterSpacing: -0.2,
   },
   sectionCount: {
+    ...eyebrow,
     marginLeft: "auto",
-    fontSize: 9,
-    color: "#64748b",
   },
   card: {
     marginBottom: 8,
-    padding: 8,
-    paddingBottom: 0,
+    padding: 10,
+    paddingBottom: 2,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 4,
-    backgroundColor: "#f8fafc",
+    borderColor: BORDER,
+    borderRadius: 8,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
   },
   cardTitle: {
-    fontSize: 12,
-    fontFamily: "Helvetica-Bold",
-    marginBottom: 8,
+    fontSize: 11,
+    fontFamily: SANS,
+    fontWeight: 600,
+  },
+  chip: {
+    marginLeft: "auto",
+    paddingVertical: 1.5,
+    paddingHorizontal: 4,
+    borderRadius: 2,
+    fontFamily: MONO,
+    fontWeight: 500,
+    fontSize: 6.5,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
   detailGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
   },
   detail: {
-    width: "25%",
-    marginBottom: 6,
+    width: "33.33%",
+    marginBottom: 8,
     paddingRight: 10,
   },
   detailLabel: {
-    fontSize: 7,
-    fontFamily: "Helvetica-Bold",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    color: "#64748b",
+    ...eyebrow,
     marginBottom: 2,
   },
   detailValue: {
     fontSize: 10,
   },
+  detailMono: {
+    fontFamily: MONO,
+    fontSize: 9.5,
+  },
   notes: {
-    marginTop: 4,
+    marginTop: 2,
     marginBottom: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
+    borderTopColor: BORDER,
   },
   notesBody: {
     fontSize: 10,
-    lineHeight: 1.4,
-    color: "#334155",
+    lineHeight: 1.45,
   },
   photoGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 8,
+    marginTop: 2,
     marginHorizontal: -4,
   },
   photoCell: {
@@ -192,25 +289,26 @@ const styles = StyleSheet.create({
     height: 150,
     objectFit: "cover",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 3,
+    borderColor: BORDER,
+    borderRadius: 4,
   },
   emptyNote: {
     fontSize: 9,
-    fontStyle: "italic",
-    color: "#94a3b8",
+    color: MUTED,
   },
   footer: {
     position: "absolute",
     bottom: 28,
-    left: 48,
-    right: 48,
+    left: PAGE_PADDING_X,
+    right: PAGE_PADDING_X,
     flexDirection: "row",
     justifyContent: "space-between",
-    fontSize: 8,
-    color: "#94a3b8",
+    fontFamily: MONO,
+    fontSize: 7,
+    textTransform: "uppercase",
+    color: MUTED,
     borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
+    borderTopColor: BORDER,
     paddingTop: 6,
   },
 });
@@ -227,20 +325,35 @@ export function InfrastructureReportDocument({
 }: InfrastructureReportDocumentProps) {
   const generatedAt = new Date(data.generatedAt);
 
+  const stats = [
+    { label: "Active points", value: data.totalPoints },
+    { label: "Categories", value: data.groups.length },
+    { label: "Photos", value: data.totalImages },
+  ];
+
   const cover = (
     <View style={styles.cover}>
+      <View style={styles.wordmark}>
+        <DropletMark />
+        <Text style={styles.wordmarkText}>RFD / WATER</Text>
+      </View>
       <Text style={styles.coverOrg}>{ORGANIZATION}</Text>
       <Text style={styles.coverTitle}>{REPORT_TITLE}</Text>
       <Text style={styles.coverMeta}>
-        Generated {format(generatedAt, "MMMM d, yyyy 'at' h:mm a")}
+        Data as of {format(generatedAt, "MMM d, yyyy · h:mm a")}
       </Text>
-      <Text style={styles.coverMeta}>
-        {data.totalPoints} active {pluralize(data.totalPoints, "point")}
-        {" across "}
-        {data.groups.length} {pluralize(data.groups.length, "category")}
-        {" · "}
-        {data.totalImages} {pluralize(data.totalImages, "photo")}
-      </Text>
+
+      <View style={styles.statBand}>
+        {stats.map((stat, i) => (
+          <View
+            key={stat.label}
+            style={[styles.statCell, i === stats.length - 1 ? styles.statCellLast : {}]}
+          >
+            <Text style={styles.detailLabel}>{stat.label}</Text>
+            <Text style={styles.statValue}>{stat.value}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 
@@ -261,30 +374,57 @@ export function InfrastructureReportDocument({
       <Page size="LETTER" style={styles.page}>
         {mapImage ? null : cover}
 
-        {data.groups.map((group) => (
-          <View key={group.type}>
-            <View style={styles.sectionHeader} wrap={false}>
-              <View
-                style={[
-                  styles.swatch,
-                  { backgroundColor: INFRASTRUCTURE_COLORS[group.type] },
-                ]}
-              />
-              <Text style={styles.sectionTitle}>{group.label}</Text>
-              <Text style={styles.sectionCount}>
-                {group.points.length} {pluralize(group.points.length, "point")}
-              </Text>
-            </View>
+        {data.groups.map((group) => {
+          const [first, ...rest] = group.points;
+          return (
+            <View key={group.type}>
+              {/* The header travels with the first card so it is never
+                  stranded at the foot of a page. When that card can break
+                  across pages, minPresenceAhead keeps at least its summary
+                  under the header. */}
+              <View wrap={first ? cardWraps(first) : false}>
+                <View style={styles.sectionHeader} wrap={false} minPresenceAhead={90}>
+                  <View
+                    style={[
+                      styles.swatch,
+                      { backgroundColor: INFRASTRUCTURE_COLORS[group.type] },
+                    ]}
+                  />
+                  <Text style={styles.sectionTitle}>{plain(group.label)}</Text>
+                  <Text style={styles.sectionCount}>
+                    {group.points.length} {pluralize(group.points.length, "point")}
+                  </Text>
+                </View>
 
-            {group.points.map((point) => (
-              <PointCard key={point.id} point={point} typeLabel={group.label} />
-            ))}
-          </View>
-        ))}
+                {first ? <PointCard point={first} typeLabel={group.label} /> : null}
+              </View>
+
+              {rest.map((point) => (
+                <PointCard key={point.id} point={point} typeLabel={group.label} />
+              ))}
+            </View>
+          );
+        })}
 
         <ReportFooter />
       </Page>
     </Document>
+  );
+}
+
+/** Lucide's Droplet, the design system's mark */
+function DropletMark() {
+  return (
+    <Svg width={11} height={11} viewBox="0 0 24 24">
+      <Path
+        d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"
+        fill="none"
+        stroke={BRAND}
+        strokeWidth={2.25}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
   );
 }
 
@@ -329,7 +469,7 @@ function MapOverview({
                 { backgroundColor: INFRASTRUCTURE_COLORS[group.type] },
               ]}
             />
-            <Text style={styles.legendLabel}>{group.label}</Text>
+            <Text style={styles.legendLabel}>{plain(group.label)}</Text>
           </View>
         ))}
 
@@ -356,28 +496,27 @@ function PointCard({
     // further pages. The summary block below is atomic: without it react-pdf
     // will happily break between the title and the details, which leaves an
     // empty bordered stub at the foot of the page.
-    <View style={styles.card} wrap={Boolean(point.images.length > 2 || notes)}>
+    <View style={styles.card} wrap={cardWraps(point)}>
       <View wrap={false}>
-        <Text style={styles.cardTitle}>{point.name}</Text>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>{plain(point.name)}</Text>
+          <Text style={[styles.chip, STATUS_TONES[point.status]]}>
+            {INFRASTRUCTURE_STATUS_LABELS[point.status]}
+          </Text>
+        </View>
 
         <View style={styles.detailGrid}>
           <View style={styles.detail}>
             <Text style={styles.detailLabel}>Type</Text>
-            <Text style={styles.detailValue}>{typeLabel}</Text>
-          </View>
-          <View style={styles.detail}>
-            <Text style={styles.detailLabel}>Status</Text>
-            <Text style={styles.detailValue}>
-              {INFRASTRUCTURE_STATUS_LABELS[point.status]}
-            </Text>
+            <Text style={styles.detailValue}>{plain(typeLabel)}</Text>
           </View>
           <View style={styles.detail}>
             <Text style={styles.detailLabel}>Latitude</Text>
-            <Text style={styles.detailValue}>{point.latitude.toFixed(6)}</Text>
+            <Text style={styles.detailMono}>{point.latitude.toFixed(6)}</Text>
           </View>
           <View style={styles.detail}>
             <Text style={styles.detailLabel}>Longitude</Text>
-            <Text style={styles.detailValue}>{point.longitude.toFixed(6)}</Text>
+            <Text style={styles.detailMono}>{point.longitude.toFixed(6)}</Text>
           </View>
         </View>
 
@@ -388,13 +527,13 @@ function PointCard({
       {notes ? (
         <View style={styles.notes}>
           <Text style={styles.detailLabel}>Notes</Text>
-          <Text style={styles.notesBody}>{notes}</Text>
+          <Text style={styles.notesBody}>{plain(notes)}</Text>
         </View>
       ) : null}
 
       {point.images.length === 0 ? (
         <View style={styles.notes}>
-          <Text style={styles.emptyNote}>No photos on file.</Text>
+          <Text style={styles.emptyNote}>{plain("No photos on file.")}</Text>
         </View>
       ) : null}
 
@@ -410,6 +549,20 @@ function PointCard({
       ) : null}
     </View>
   );
+}
+
+/**
+ * Breaks Geist's ff, fi and fl ligatures with a zero-width non-joiner.
+ * react-pdf always applies them and maps each ligature glyph back to one
+ * character, so "Shutoff" would copy and search as "Shutof".
+ */
+function plain(text: string) {
+  return text.replace(/f(?=[fil])/g, "f\u200C");
+}
+
+/** Whether a point's card may break across pages: long ones only */
+function cardWraps(point: ReportPoint) {
+  return point.images.length > 2 || Boolean(point.notes?.trim());
 }
 
 function pluralize(count: number, noun: string) {
