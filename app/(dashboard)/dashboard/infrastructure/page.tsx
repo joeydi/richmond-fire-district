@@ -32,7 +32,7 @@ export default async function InfrastructurePage({
   const sortBy = (params.sortBy as keyof InfrastructurePoint) || "name";
   const sortOrder = (params.sortOrder as "asc" | "desc") || "asc";
   const page = parseInt(params.page || "1", 10);
-  const pageSize = 20;
+  const pageSize = 40;
 
   const [{ data: points, count }, userIsAdmin, details] = await Promise.all([
     getInfrastructurePoints({
