@@ -10,6 +10,7 @@ import {
 } from "@/lib/types/infrastructure";
 
 export interface LayerVisibility {
+  imagery: boolean;
   infrastructure: boolean;
   parcels: boolean;
   infrastructureTypes: Record<InfrastructureType, boolean>;
@@ -168,6 +169,12 @@ export function LayerControls({ visibility, onVisibilityChange, typeCounts, parc
               style={{ borderColor: PARCEL_COLOR, backgroundColor: `${PARCEL_COLOR}33` }}
             />
           }
+        />
+        <ToggleRow
+          strong
+          label="VCGI imagery"
+          checked={visibility.imagery}
+          onChange={(checked) => onVisibilityChange({ ...visibility, imagery: checked })}
         />
       </div>
       <div className="flex items-center gap-2 border-t px-3 py-2 text-[11px] text-muted-foreground">

@@ -12,6 +12,7 @@ import type {
 import { getParcelsByViewport } from "@/lib/actions/map";
 import { InfrastructureLayer } from "./infrastructure-layer";
 import { ParcelsLayer } from "./parcels-layer";
+import { ImageryLayer } from "./imagery-layer";
 import { ParcelPopup } from "./parcel-popup";
 import { LayerControls, type LayerVisibility } from "./layer-controls";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ const FOCUS_ZOOM = 18;
 const DRAFT_MARKER_COLOR = "#0891b2"; // --brand
 
 const defaultLayerVisibility: LayerVisibility = {
+  imagery: true,
   infrastructure: true,
   parcels: true,
   infrastructureTypes: {
@@ -307,6 +309,7 @@ export function MapContainer({
       )}
       {mapLoaded && mapInstance && (
         <>
+          <ImageryLayer map={mapInstance} visible={layerVisibility.imagery} />
           <ParcelsLayer
             map={mapInstance}
             parcels={parcels}
