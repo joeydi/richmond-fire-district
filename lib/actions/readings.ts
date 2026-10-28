@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { requireEditor } from "@/lib/auth/roles";
+import { readMeterImage, type MeterImageType } from "@/lib/services/meter-ocr";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -673,4 +674,37 @@ export async function deleteReservoirReading(
   revalidatePath("/dashboard/readings");
   revalidatePath("/dashboard");
   return { success: true };
+}
+
+const meterPhotoSchema = z
+  .string()
+  .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, "Expected a JPEG, PNG or WebP photo");
+
+/**
+ * Reads the register total from a captured meter photo, to prefill the
+ * reading. The user still checks and saves it.
+ */
+export async function readMeterPhoto(
+  imageDataUrl: string
+): Promise<{ success: boolean; reading?: number; legible?: boolean; error?: string }> {
+  await requireEditor();
+
+  const parsed = meterPhotoSchema.safeParse(imageDataUrl);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const [header, base64] = parsed.data.split(",");
+  const mediaType = header.slice("data:".length, -";base64".length) as MeterImageType;
+
+  try {
+    const result = await readMeterImage(base64, mediaType);
+    if (!result || result.reading === null) {
+      return { success: false, error: "Couldn't find a reading in the photo" };
+    }
+    return { success: true, reading: result.reading, legible: result.legible };
+  } catch (error) {
+    console.error("Meter photo read failed:", error);
+    return { success: false, error: "Couldn't read the photo" };
+  }
 }

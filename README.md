@@ -57,6 +57,9 @@ SUPABASE_SECRET_KEY=your-secret-key
 # Copy the JSON from {NEXT_PUBLIC_SUPABASE_URL}/auth/v1/.well-known/jwks.json
 SUPABASE_JWKS={"keys":[...]}
 
+# Optional - Reads the meter value from photos taken on the daily round
+ANTHROPIC_API_KEY=your-anthropic-api-key
+
 # Optional - Email notifications
 # The from address must be on a domain authenticated in SendGrid, not a
 # gmail.com or similar address, or receiving servers will reject or spam it

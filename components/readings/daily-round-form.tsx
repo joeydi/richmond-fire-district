@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Check, Minus, Plus, X } from "lucide-react";
+import { Camera, Check, Loader2, Minus, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,7 @@ import {
   insertChlorineReading,
   insertMeterReading,
   insertReservoirReading,
+  readMeterPhoto,
   type DailyRoundContext,
   type LastReading,
 } from "@/lib/actions/readings";
@@ -187,6 +188,12 @@ export function DailyRoundForm({ context, todayLabel, now }: DailyRoundFormProps
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [capturedAt, setCapturedAt] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<"close" | "retake" | null>(null);
+  // Reading the captured photo prefills the meter value for the user to check
+  const [photoRead, setPhotoRead] = useState<
+    { status: "reading" } | { status: "done"; value: string; legible: boolean } | { status: "failed" } | null
+  >(null);
+  const photoReadId = useRef(0);
+  const photoFilledValue = useRef<string | null>(null);
 
   const meter = meters.find((m) => m.id === meterId);
   const reservoir = reservoirs.find((r) => r.id === reservoirId);
@@ -236,14 +243,43 @@ export function DailyRoundForm({ context, todayLabel, now }: DailyRoundFormProps
     setReservoirValue(String(Math.max(0, base + direction * RESERVOIR_STEP_IN)));
   };
 
+  // Keeps photoFilledValue so a retake can replace the value the last photo filled
+  const clearPhotoRead = () => {
+    photoReadId.current++;
+    setPhotoRead(null);
+  };
   const closeCamera = () => {
     setShowCamera(false);
     setCapturedImage(null);
     setCapturedAt(null);
+    clearPhotoRead();
   };
   const retake = () => {
     setCapturedImage(null);
     setCapturedAt(null);
+    clearPhotoRead();
+  };
+  const handleCapture = async (dataUrl: string, ts: string) => {
+    setCapturedImage(dataUrl);
+    setCapturedAt(ts);
+    setPhotoRead({ status: "reading" });
+
+    const id = ++photoReadId.current;
+    const result = await readMeterPhoto(dataUrl).catch(() => null);
+    // Ignore a read that finished after a retake or close
+    if (id !== photoReadId.current) return;
+
+    if (!result?.success || result.reading === undefined) {
+      setPhotoRead({ status: "failed" });
+      return;
+    }
+
+    const filled = result.reading.toFixed(2);
+    const previousFill = photoFilledValue.current;
+    photoFilledValue.current = filled;
+    // Don't overwrite a value the user typed; replacing an earlier photo's value is fine
+    setMeterValue((current) => (current === "" || current === previousFill ? filled : current));
+    setPhotoRead({ status: "done", value: filled, legible: result.legible ?? false });
   };
   // Leaving a capture clears its timestamp; confirm if a value was read from it
   const requestClose = () => (capturedImage && meterValue ? setConfirmAction("close") : closeCamera());
@@ -411,10 +447,7 @@ export function DailyRoundForm({ context, todayLabel, now }: DailyRoundFormProps
             {showCamera && (
               <CameraCapture
                 capturedImage={capturedImage}
-                onCapture={(dataUrl, ts) => {
-                  setCapturedImage(dataUrl);
-                  setCapturedAt(ts);
-                }}
+                onCapture={handleCapture}
                 onRequestRetake={requestRetake}
                 onRequestClose={requestClose}
               />
@@ -429,6 +462,28 @@ export function DailyRoundForm({ context, todayLabel, now }: DailyRoundFormProps
             />
             {meterDelta !== null && meterDelta < 0 && (
               <ContextRow tone="warning" left="Lower than the previous reading — check the digits" />
+            )}
+            {photoRead?.status === "reading" && (
+              <ContextRow
+                left={
+                  <span className="inline-flex items-center gap-1.5">
+                    <Loader2 className="size-3 animate-spin" /> Reading photo…
+                  </span>
+                }
+              />
+            )}
+            {photoRead?.status === "done" &&
+              (meterValue !== photoRead.value ? (
+                <ContextRow
+                  left={`Photo reads ${Number(photoRead.value).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                />
+              ) : photoRead.legible ? (
+                <ContextRow left="Read from photo — check the digits" />
+              ) : (
+                <ContextRow tone="warning" left="Photo unclear — check every digit" />
+              ))}
+            {photoRead?.status === "failed" && (
+              <ContextRow tone="warning" left="Couldn't read the photo — enter it by hand" />
             )}
             {capturedAt && (
               <ContextRow left={`Saved with photo time · ${getLogDateParts(capturedAt).time}`} />

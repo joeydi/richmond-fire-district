@@ -276,6 +276,12 @@ instances verify sessions without fetching them, see `lib/supabase/jwks.ts`):
 SUPABASE_JWKS={"keys":[...]}
 ```
 
+Optional for reading meter photos (`lib/services/meter-ocr.ts`, Claude Haiku;
+without it the daily round says the photo couldn't be read):
+```
+ANTHROPIC_API_KEY=
+```
+
 Optional for email notifications:
 ```
 # SendGrid. The from address must be on a domain authenticated in SendGrid
